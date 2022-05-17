@@ -1,0 +1,3 @@
+location = dalby
+latitude = -27.18  (DECIMAL DEGREES)
+longitude = 151.26  (DECIMAL DEGREES)
