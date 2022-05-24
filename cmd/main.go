@@ -3,7 +3,6 @@ package main
 import (
 	"apsim-api/internal/models"
 	"apsim-api/internal/router"
-	"apsim-api/internal/utils"
 	"apsim-api/pkg/application"
 	server "apsim-api/pkg/server"
 	"fmt"
@@ -32,6 +31,7 @@ func main() {
 	app.DB.Client.AutoMigrate(models.MicroclimateReading{})
 	app.DB.Client.AutoMigrate(models.Culture{})
 	app.DB.Client.AutoMigrate(models.PredictedMicroclimateReading{})
+	app.DB.Client.AutoMigrate(models.Soil{})
 
 	srv := server.GetServer().WithAddr("localhost:8080").WithRouter(router.GetRouter(app))
 
@@ -47,7 +47,7 @@ func main() {
 
 	go func() {
 		//Start the background microclimate parameter fetcher
-		utils.BackgroundUpdate(app)
+		//utils.BackgroundUpdate(app)
 	}()
 
 	//Wait terminal shutdown

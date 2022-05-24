@@ -7,26 +7,37 @@ import (
 	"apsim-api/internal/handlers/getMicroclimate"
 	"apsim-api/internal/handlers/getMicroclimateReading"
 	"apsim-api/internal/handlers/getYield"
+	"apsim-api/internal/middlewares"
 	"apsim-api/pkg/application"
 	"github.com/gorilla/mux"
 )
 
 func GetRouter(application *application.Application) *mux.Router {
-	mux := mux.NewRouter()
+	router := mux.NewRouter()
 
-	mux.Handle("/location", getLocations.GetLocations(application)).Methods("GET")
+	router.Handle("/location", getLocations.GetLocations(application)).Methods("GET")
 
-	mux.Handle("/culture", getCultures.GetCultures(application)).Methods("GET")
+	router.Handle("/culture", getCultures.GetCultures(application)).Methods("GET")
 
-	mux.Handle("/microclimate", getMicroclimate.GetMicroclimate(application)).Methods("GET")
+	router.Handle("/microclimate", getMicroclimate.GetMicroclimate(application)).Methods("GET")
 
-	//mux.Handle("/location/{locationId}/microclimate/{microclimateId}", getMicroclimateReading.GetReading(application)).Methods("GET")
+	//
+	locationRouter := router.PathPrefix("/location/{locationId}").Subrouter()
+	locationRouter.Use(middlewares.LocationMiddleware)
 
-	mux.Handle("/microclimate/{microclimateId}", getMicroclimateReading.GetMicroclimateReading(application)).Methods("GET")
+	cultureRouter := locationRouter.PathPrefix("/culture/{cultureId}").Subrouter()
+	cultureRouter.Use(middlewares.CultureMiddleware)
 
-	mux.Handle("/location/{locationId}/culture/{cultureId}/yield", getYield.GetYield2(application)).Methods("GET")
+	microclimateRouter := locationRouter.PathPrefix("/microclimate/{microclimateId}").Subrouter()
+	microclimateRouter.Use(middlewares.MicroclimateMiddleware)
 
-	mux.Handle("/culture/{cultureId}/gdd", getGrowingDay.GetGrowingDay(application)).Methods("GET")
+	//mux.Handle("/microclimate/{microclimateId}", getMicroclimateReading.GetMicroclimateReading(application)).Methods("GET")
+	//
+	//mux.Handle("/location/{locationId}/culture/{cultureId}/yield", getYield.GetYield2(application)).Methods("GET")
 
-	return mux
+	cultureRouter.Handle("/gdd", getGrowingDay.GetGrowingDay(application)).Methods("GET")
+	microclimateRouter.Handle("", getMicroclimateReading.GetMicroclimateReading(application)).Methods("GET")
+	cultureRouter.Handle("/yield", getYield.GetYield2(application)).Methods("GET")
+
+	return router
 }

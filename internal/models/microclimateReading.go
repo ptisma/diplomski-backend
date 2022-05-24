@@ -2,7 +2,7 @@ package models
 
 import (
 	"apsim-api/pkg/application"
-	"fmt"
+	"gorm.io/gorm"
 	"time"
 )
 
@@ -16,26 +16,28 @@ type MicroclimateReading struct {
 	Date  string  `gorm:"not null" json:"date"`
 	Value float32 `gorm:"not null" json:"value"`
 	//strings or time
+	//add direct string in YYYY-MM-DD format because of sqlite
 	FromDate time.Time `gorm:"-:all" json:"-" `
 	ToDate   time.Time `gorm:"-:all" json:"-"`
 }
 
-func (l *MicroclimateReading) GetMicroclimateReading(app *application.Application) (*[]MicroclimateReading, error) {
+//return just slice instead of pointer on slice
+func (l *MicroclimateReading) GetMicroclimateReading(app *application.Application) ([]MicroclimateReading, error) {
 	var err error
 
-	microclimates := &[]MicroclimateReading{}
+	microclimates := []MicroclimateReading{}
 	queryStr := "microclimate_id = ? AND location_id = ? AND date <= ? AND date >= ?"
 	//err = app.DB.Client.Debug().Model(&MicroclimateReading{}).Where(queryStr, l.MicroclimateID, l.LocationID, l.ToDate, l.FromDate).Find(microclimates).Error
 
 	//app.DB.Client.Debug().Model(&MicroclimateReading{}).Where(queryStr, l.MicroclimateID, l.LocationID, l.ToDate, l.FromDate).Find(microclimates)
 	//app.DB.Client.Debug().Model(&MicroclimateReading{}).Find(microclimates)
 	//moze samo group by date
-	app.DB.Client.Debug().Preload("Location").Model(&MicroclimateReading{}).Preload("Microclimate").Where(queryStr, l.MicroclimateID, l.LocationID, l.ToDate, l.FromDate).Group("microclimate_id,location_id,date").Order("date").Find(microclimates)
+	app.DB.Client.Debug().Preload("Location").Model(&MicroclimateReading{}).Preload("Microclimate").Where(queryStr, l.MicroclimateID, l.LocationID, l.ToDate.Format("2006-01-02"), l.FromDate.Format("2006-01-02")).Group("microclimate_id,location_id,date").Order("date").Find(&microclimates)
 	if err != nil {
-		return &[]MicroclimateReading{}, err
+		return []MicroclimateReading{}, err
 	}
 
-	fmt.Println(microclimates)
+	//fmt.Println(microclimates)
 
 	//for _, value := range *microclimates {
 	//	fmt.Println(value.LocationID)
@@ -72,4 +74,16 @@ func (l *MicroclimateReading) CreateMicroclimateReadingBatch(app *application.Ap
 	var err error
 	err = app.DB.Client.Debug().Create(&microclimateReadings).Error
 	return err
+}
+
+func (l *MicroclimateReading) GetBatchMicroclimateReading(app *application.Application, ch chan MicroclimateReading) error {
+	results := []MicroclimateReading{}
+	result := app.DB.Client.Where("location_id = ? AND date >= ? AND date <= ?", l.ID, l.FromDate, l.ToDate).FindInBatches(&results, 100, func(tx *gorm.DB, batch int) error {
+		for _, result := range results {
+			ch <- result
+		}
+
+		return nil
+	})
+	return result.Error
 }

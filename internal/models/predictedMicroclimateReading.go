@@ -20,19 +20,19 @@ type PredictedMicroclimateReading struct {
 	ToDate   time.Time `gorm:"-:all" json:"-"`
 }
 
-func (l *PredictedMicroclimateReading) GetPredictedMicroclimateReading(app *application.Application) (*[]PredictedMicroclimateReading, error) {
+func (l *PredictedMicroclimateReading) GetPredictedMicroclimateReading(app *application.Application) ([]PredictedMicroclimateReading, error) {
 	var err error
 
-	microclimates := &[]PredictedMicroclimateReading{}
+	microclimates := []PredictedMicroclimateReading{}
 	queryStr := "microclimate_id = ? AND location_id = ? AND date <= ? AND date >= ?"
 	//err = app.DB.Client.Debug().Model(&MicroclimateReading{}).Where(queryStr, l.MicroclimateID, l.LocationID, l.ToDate, l.FromDate).Find(microclimates).Error
 
 	//app.DB.Client.Debug().Model(&MicroclimateReading{}).Where(queryStr, l.MicroclimateID, l.LocationID, l.ToDate, l.FromDate).Find(microclimates)
 	//app.DB.Client.Debug().Model(&MicroclimateReading{}).Find(microclimates)
 	//moze samo group by date
-	app.DB.Client.Debug().Preload("Location").Model(&PredictedMicroclimateReading{}).Preload("Microclimate").Where(queryStr, l.MicroclimateID, l.LocationID, l.ToDate, l.FromDate).Group("microclimate_id,location_id,date").Order("date").Find(microclimates)
+	app.DB.Client.Debug().Preload("Location").Model(&PredictedMicroclimateReading{}).Preload("Microclimate").Where(queryStr, l.MicroclimateID, l.LocationID, l.ToDate.Format("2006-01-02"), l.FromDate.Format("2006-01-02")).Group("microclimate_id,location_id,date").Order("date").Find(&microclimates)
 	if err != nil {
-		return &[]PredictedMicroclimateReading{}, err
+		return []PredictedMicroclimateReading{}, err
 	}
 
 	fmt.Println(microclimates)

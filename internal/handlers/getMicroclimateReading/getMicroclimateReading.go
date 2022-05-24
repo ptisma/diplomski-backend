@@ -1,13 +1,11 @@
 package getMicroclimateReading
 
 import (
-	"apsim-api/internal/models"
+	"apsim-api/internal/services/microclimateReadingService"
 	"apsim-api/pkg/application"
 	"encoding/json"
 	"fmt"
-	"github.com/gorilla/mux"
 	"net/http"
-	"strconv"
 	"time"
 )
 
@@ -15,7 +13,66 @@ func GetMicroclimateReading(app *application.Application) http.Handler {
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
-		params := mux.Vars(r)
+		locationId, _ := r.Context().Value("locationId").(uint64)
+		microclimateId, _ := r.Context().Value("microclimateId").(uint64)
+
+		//Parsing URL params
+		urlParams := r.URL.Query()
+		//parse direct into string YYYY-MM-DD
+		fromDate, err := time.Parse("20060102", urlParams.Get("from"))
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, "Error in parsing: fromDate is not in YYYYMMDD format")
+			return
+		}
+		toDate, err := time.Parse("20060102", urlParams.Get("to"))
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, "Error in parsing: toDate is not in YYYYMMDD format")
+			return
+		}
+		fmt.Println("locationId:", locationId, "microclimateId:", microclimateId, "fromDate:", fromDate, "toDate:", toDate)
+
+		microclimateReadingService := microclimateReadingService.GetMicroclimateReadingService(app)
+		latestMicroclimateReading, err := microclimateReadingService.GetLatestMicroclimateReading(int(locationId))
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, "Error in fetching: latest microclimate reading")
+			return
+		}
+		fmt.Println("latest microclimate reading", latestMicroclimateReading)
+
+		readings, err := microclimateReadingService.GetMicroclimateReadings(int(microclimateId), int(locationId), fromDate, toDate)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, "Error in fetching: microclimate readings")
+			return
+		}
+		fmt.Println("readings:", readings)
+
+		lastDate, err := time.Parse("2006-01-02", latestMicroclimateReading.Date)
+
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, "Error in parsing: latest microclimate reading date")
+			return
+		}
+		if toDate.After(lastDate) {
+			preadings, err := microclimateReadingService.GetPredictedMicroclimateReadings(int(microclimateId), int(locationId), lastDate.AddDate(0, 0, 1), toDate)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				fmt.Fprintf(w, "Error in fetching: predicted microclimate readings")
+				return
+			}
+			cpreadings := microclimateReadingService.ConvertPredictedMicroclimateReadings(preadings)
+			fmt.Println("cpreadings:", cpreadings)
+			readings = append(readings, cpreadings...)
+
+		}
+		w.Header().Set("Content-Type", "application/json")
+		response, _ := json.Marshal(&readings)
+		w.Write(response)
+		//params := mux.Vars(r)
 		//fmt.Println("Hello world")
 		//fmt.Println(params["id1"], params["id2"])
 		//locationId, err := strconv.ParseInt(params["locationId"], 10, 32)
@@ -23,11 +80,11 @@ func GetMicroclimateReading(app *application.Application) http.Handler {
 		//	fmt.Println(err)
 		//	return
 		//}
-		microclimateId, _ := strconv.ParseUint(params["microclimateId"], 10, 32)
+		//microclimateId, _ := strconv.ParseUint(params["microclimateId"], 10, 32)
 
 		//
 		//fmt.Println("microclimateId:", microclimateId)
-		urlParams := r.URL.Query()
+		//urlParams := r.URL.Query()
 		//fromDate := urlParams.Get("from")
 		//toDate := urlParams.Get("to")
 		//fmt.Println(fromDate, toDate)
@@ -65,23 +122,23 @@ func GetMicroclimateReading(app *application.Application) http.Handler {
 		//response, _ := json.Marshal(microclimateReading)
 		//w.Write(response)
 
-		fromDate, _ := time.Parse("20060102", urlParams.Get("from"))
-		toDate, _ := time.Parse("20060102", urlParams.Get("to"))
-		locationId, _ := strconv.ParseUint(urlParams.Get("locationId"), 10, 32)
-		fmt.Println("locationId:", locationId, "microclimateId:", microclimateId, "fromDate:", fromDate, "toDate:", toDate)
+		//fromDate, _ := time.Parse("20060102", urlParams.Get("from"))
+		//toDate, _ := time.Parse("20060102", urlParams.Get("to"))
+		//locationId, _ := strconv.ParseUint(urlParams.Get("locationId"), 10, 32)
+		//fmt.Println("locationId:", locationId, "microclimateId:", microclimateId, "fromDate:", fromDate, "toDate:", toDate)
 
-		microclimateReading := models.MicroclimateReading{
-			MicroclimateID: uint32(microclimateId),
-			LocationID:     uint32(locationId),
-			FromDate:       fromDate,
-			ToDate:         toDate,
-		}
-
-		microclimateReadings, _ := microclimateReading.GetMicroclimateReading(app)
-
-		w.Header().Set("Content-Type", "application/json")
-		response, _ := json.Marshal(microclimateReadings)
-		w.Write(response)
+		//microclimateReading := models.MicroclimateReading{
+		//	MicroclimateID: uint32(microclimateId),
+		//	LocationID:     uint32(locationId),
+		//	FromDate:       fromDate,
+		//	ToDate:         toDate,
+		//}
+		//
+		//microclimateReadings, _ := microclimateReading.GetMicroclimateReading(app)
+		//
+		//w.Header().Set("Content-Type", "application/json")
+		//response, _ := json.Marshal(microclimateReadings)
+		//w.Write(response)
 
 	})
 }

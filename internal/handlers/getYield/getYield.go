@@ -3,12 +3,17 @@ package getYield
 import (
 	"apsim-api/internal/apsimx"
 	"apsim-api/internal/models"
+	cultureService2 "apsim-api/internal/services/cultureService"
+	locationService2 "apsim-api/internal/services/locationService"
+	microclimateReadingService2 "apsim-api/internal/services/microclimateReadingService"
+	soilService2 "apsim-api/internal/services/soilService"
+	"apsim-api/internal/utils"
 	"apsim-api/pkg/application"
-	"apsim-api/pkg/influx"
 	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/gorilla/mux"
+	"golang.org/x/sync/errgroup"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"io"
@@ -141,191 +146,102 @@ func GetYield2(app *application.Application) http.Handler {
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
-		// remember current time im YYYYMMDD format
-		currentDate := time.Now().Format("20060102")
-		fmt.Println("Current date:", currentDate)
+		//Retrieving locationId and cultureID from middlewares
+		locationId, _ := r.Context().Value("locationId").(uint64)
+		cultureId, _ := r.Context().Value("cultureId").(uint64)
 
-		// ...yield?from=01011990&to=01012000&locationId=1&cultureId=1
-		//get stuff from URL- locationId and cultureId
-		params := mux.Vars(r)
-		locationId, err := strconv.ParseInt(params["locationId"], 10, 32)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			fmt.Fprintf(w, "Error in fetching yield: invalid locationId")
-			return
-		}
-		cultureId, err := strconv.ParseUint(params["cultureId"], 10, 32)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			fmt.Fprintf(w, "Error in fetching yield: invalid cultureId")
-			return
-		}
-		//get stuff from URL- fromDate and toDate
+		//Parsing URL params
 		urlParams := r.URL.Query()
+		//parse direct into string YYYY-MM-DD
 		fromDate, err := time.Parse("20060102", urlParams.Get("from"))
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			fmt.Fprintf(w, "Error in fetching yield: invalid fromDate")
+			fmt.Fprintf(w, "Error in parsing: fromDate is not in YYYYMMDD format")
 			return
 		}
 		toDate, err := time.Parse("20060102", urlParams.Get("to"))
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			fmt.Fprintf(w, "Error in fetching yield: invalid toDate")
+			fmt.Fprintf(w, "Error in parsing: toDate is not in YYYYMMDD format")
 			return
 		}
-		fmt.Println("LocationId:", locationId, "cultureId:", cultureId, "fromDate:", fromDate, "toDate:", toDate)
-
-		//Prepare response
-		//var yields []struct {
-		//	Year  int32
-		//	Yield float32
-		//}
-
-		yields := []struct {
-			Year  int32
-			Yield float32
-		}{}
-
-		//Check if the result is already cached in InfluxDB before running simulation
-		fluxQueryStr := fmt.Sprintf(`from(bucket:"apsim")
-				|> range(start: 0)
-				|> filter(fn: (r) => r._measurement == "simulation" and r["location_id"] == "%d" and r["culture_id"] == "%d" and r["from"] == "%d" and r["to"] == "%d")
-                |> sort(columns: ["_time"], desc: true)
-                |> first()
-                |> group()
-                `, locationId, cultureId, fromDate.Year(), toDate.Year())
-
-		fmt.Println(fluxQueryStr)
-
-		resultIterator, err := app.Writer.Read(context.TODO(), fluxQueryStr)
-		flag := true
-		if err == nil {
-			// Iterate over query response
-			for resultIterator.Next() {
-
-				// Access data
-				fmt.Printf("field: %s, value: %v\n", resultIterator.Record().Field(), resultIterator.Record().Value())
-				year := resultIterator.Record().Field()
-				yearInt, err := strconv.ParseInt(year, 10, 32)
-				if err != nil {
-					flag = false
-					fmt.Println("Cant parse field from influx db", err.Error())
-					break
-				}
-				yieldFloat, ok := resultIterator.Record().Value().(float64)
-				if !ok {
-					flag = false
-					fmt.Println("Cant parse value from influx db")
-					break
-				}
-				yields = append(yields, struct {
-					Year  int32
-					Yield float32
-				}{Year: int32(yearInt), Yield: float32(yieldFloat)})
-			}
-			// Check for an error
-			if resultIterator.Err() != nil {
-				flag = false
-				fmt.Printf("query parsing error: %s\n", resultIterator.Err().Error())
-			}
-		} else {
-			fmt.Println(err)
-		}
-
-		if flag && len(yields) == (toDate.Year()-fromDate.Year()+1) {
-			w.Header().Set("Content-Type", "application/json")
-			response, _ := json.Marshal(yields)
-			w.Write(response)
-			return
-		}
+		fmt.Println("locationId:", locationId, "cultureId:", cultureId, "fromDate:", fromDate, "toDate:", toDate)
 
 		// Get a location(latitude and longitude) based on URL ID and get a culture needed later for apsimx file
-		location := &models.Location{ID: uint32(locationId)}
-		err = location.GetLocationById(app)
+		locationService := locationService2.GetLocationService(app)
+		location, err := locationService.GetLocation(int(locationId))
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			fmt.Fprintf(w, "Error in fetching yield: locationId doesn't exist")
+			fmt.Fprintf(w, "Error in fetching location: locationId doesn't exist")
 			return
 		}
 		fmt.Println("Location:", location)
-		culture := &models.Culture{ID: uint32(cultureId)}
+
+		cultureService := cultureService2.GetCultureService(app)
+		culture, err := cultureService.GetCulture(int(cultureId))
 		fmt.Println("culture:", culture)
 
-		//Position in apsim folder
-		//os.Chdir("./apsim")
-		//newDir, _ := os.Getwd()
-		//fmt.Println("Current working dir:", newDir)
-
-		//Create temp apsimx file in stage area
-		f, err := os.CreateTemp("./apsim", "apsimxFile*.apsimx")
+		// Get a soil(data) based on LocationId for apsimx file
+		soilService := soilService2.GetSoilService(app)
+		soil, err := soilService.GetSoil(int(locationId))
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			fmt.Fprintf(w, "Error in fetching yield: temporary apsimx can't be created")
+			fmt.Fprintf(w, "Error in fetching soil: soil doesn't exist for given locationID %d", locationId)
 			return
 		}
+		fmt.Println("Soil:", soil)
 
-		////Abs filepath of apsimx file depending on OS
-		//absPath := filepath.Join(newDir, f.Name())
+		microclimateReadingService := microclimateReadingService2.GetMicroclimateReadingService(app)
 
-		absPathApsimx, _ := filepath.Abs(f.Name())
-		fmt.Println("Absolute path of apsimx file:", absPathApsimx)
-		////On windows have to use "C:\\etc\\" because of C#
-		//
-		////Create a CSV file
-		f2, _ := os.CreateTemp("./apsim", "csv*.csv")
-		absPathCsv, _ := filepath.Abs(f2.Name())
-		fmt.Println("Absolute path of csv file:", absPathCsv)
-		//fmt.Println(filepath.Base(f2.Name()))
-		//fmt.Println(filepath.Join(newDir, f2.Name()))
-		csvFile, _ := os.OpenFile(absPathCsv, os.O_APPEND|os.O_WRONLY, 0644)
-		//csvFile.WriteString("kek")
-
-		//Load the data from DB
-		//Load in batch
-		//Write into CSV
-		//Write first line
-		csvFile.WriteString("year,day,radn,maxt,mint,rain,pan,vp,code\n")
-		results := &[]models.MicroclimateReading{}
-		buff := []models.MicroclimateReading{}
-		counter := 0
-		//fix >= doesnt work on start so less than 1 day, fix format myb?
-		result := app.DB.Client.Debug().Where("location_id = ? AND date >= ? AND date <= ?", location.ID, fromDate.AddDate(0, 0, -1), toDate).FindInBatches(results, 102, func(tx *gorm.DB, batch int) error {
-			for _, result := range *results {
-				// batch processing found records
-				//fmt.Println(result)
-				counter += 1
-				buff = append(buff, result)
-				if counter == 6 {
-					rowDate, _ := time.Parse("2006-01-02", buff[0].Date)
-					csvRow := fmt.Sprintf("%d,%d,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%d\n", rowDate.Year(), rowDate.YearDay(), buff[0].Value, buff[1].Value, buff[2].Value, buff[3].Value, buff[4].Value, buff[5].Value, 3000)
-					csvFile.WriteString(csvRow)
-					counter = 0
-					buff = nil
-				}
-
-			}
-			//tx.Save(&results)
-
-			//fmt.Println(tx.RowsAffected) // number of records in this batch
-
-			//fmt.Println(batch) // Batch 1, 2, 3
-
-			// returns error will stop future batches
-			return nil
+		latestMicroclimateReading, err := microclimateReadingService.GetLatestMicroclimateReading(int(locationId))
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, "Error in fetching: latest microclimate reading")
+			return
+		}
+		fmt.Println("latest microclimate reading", latestMicroclimateReading)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, "Error in parsing: latest microclimate reading date")
+			return
+		}
+		//Set the maximum time for all the work in background
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		//Prepare goroutines, each for one file(apsimx, csv and consts)
+		g, ctx := errgroup.WithContext(ctx)
+		//Make a buffered channel for shared communication because apsimx goroutine needs the filepaths of other two files
+		//ID = 0 for CSV and ID = 1 for Consts file
+		ch := make(chan models.Message, 2)
+		mainCh := make(chan models.Message, 2)
+		//Create a consts file and write Location information in it
+		g.Go(func() error {
+			return locationService.GenerateConstsFile(location, ch, mainCh, ctx, cancel)
 		})
-		fmt.Println(result.Error)
-		//
-		//if toDate is greater than max from db fetch from predicted microclimateReading table
-		microclimateReading := models.MicroclimateReading{LocationID: uint32(locationId)}
-		_ = microclimateReading.GetLatestMicroclimateReading(app)
-		fmt.Println(microclimateReading)
-		lastTime, _ := time.Parse("2006-01-02", microclimateReading.Date)
-		if toDate.After(lastTime) {
-			results := &[]models.PredictedMicroclimateReading{}
-			buff := []models.PredictedMicroclimateReading{}
+
+		//Create a apsimx file, fetch the
+		g.Go(func() error {
+			return locationService.GenerateAPSIMXFile(fromDate, toDate, soil, ch, mainCh, ctx, cancel)
+		})
+
+		//Create a CSV file
+		g.Go(func() error {
+			defer fmt.Println("CSV ending")
+			var err error
+			csvFileO, csvFileAbs, err := utils.CreateTempStageFile("csv*.txt")
+			ch <- Message{ID: 1, Payload: csvFileAbs}
+			if err != nil {
+				cancel()
+				return err
+			}
+			fmt.Println("CSVFile abs path:", csvFileAbs)
+
+			csvFile, _ := os.OpenFile(csvFileAbs, os.O_APPEND|os.O_WRONLY, 0644)
+			csvFile.WriteString("year,day,radn,maxt,mint,rain,pan,vp,code\n")
+			results := &[]models.MicroclimateReading{}
+			buff := []models.MicroclimateReading{}
 			counter := 0
-			result := app.DB.Client.Debug().Where("location_id = ? AND date >= ? AND date <= ?", location.ID, fromDate.AddDate(0, 0, -1), toDate).FindInBatches(results, 102, func(tx *gorm.DB, batch int) error {
+			//fix >= doesnt work on start so less than 1 day, fix format myb?
+			result := app.DB.Client.Where("location_id = ? AND date >= ? AND date <= ?", location.ID, fromDate.AddDate(0, 0, -1), toDate).FindInBatches(results, 102, func(tx *gorm.DB, batch int) error {
 				for _, result := range *results {
 					// batch processing found records
 					//fmt.Println(result)
@@ -351,83 +267,343 @@ func GetYield2(app *application.Application) http.Handler {
 			})
 			fmt.Println(result.Error)
 
-		}
+			if toDate.After(fromDate) {
+				results := &[]models.PredictedMicroclimateReading{}
+				buff := []models.PredictedMicroclimateReading{}
+				counter := 0
+				result := app.DB.Client.Where("location_id = ? AND date >= ? AND date <= ?", location.ID, fromDate.AddDate(0, 0, -1), toDate).FindInBatches(results, 102, func(tx *gorm.DB, batch int) error {
+					for _, result := range *results {
+						// batch processing found records
+						//fmt.Println(result)
+						counter += 1
+						buff = append(buff, result)
+						if counter == 6 {
+							rowDate, _ := time.Parse("2006-01-02", buff[0].Date)
+							csvRow := fmt.Sprintf("%d,%d,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%d\n", rowDate.Year(), rowDate.YearDay(), buff[0].Value, buff[1].Value, buff[2].Value, buff[3].Value, buff[4].Value, buff[5].Value, 3000)
+							csvFile.WriteString(csvRow)
+							counter = 0
+							buff = nil
+						}
 
-		//Create a consts file
-		f3, _ := os.CreateTemp("./apsim", "const*.txt")
-		absPathConst, _ := filepath.Abs(f3.Name())
-		//fmt.Println(filepath.Base(f3.Name()))
-		//fmt.Println(filepath.Join(newDir, f3.Name()))
-		constFile, _ := os.OpenFile(absPathConst, os.O_APPEND|os.O_WRONLY, 0644)
+					}
+					//tx.Save(&results)
 
-		//Write into consts file
-		constFile.WriteString(fmt.Sprintf("location = %s\n", location.Name))
-		constFile.WriteString(fmt.Sprintf("latitude = %.2f (DECIMAL DEGREES)\n", location.Latitude))
-		constFile.WriteString(fmt.Sprintf("longitude = %.2f (DECIMAL DEGREES)\n", location.Longitude))
+					//fmt.Println(tx.RowsAffected) // number of records in this batch
 
-		//Get json for apsimx file and write to it
-		res := apsimx.NewBarleyApsimx2(fromDate, toDate, absPathCsv, absPathConst)
+					//fmt.Println(batch) // Batch 1, 2, 3
 
-		f.WriteString(res)
-		f.Close()
+					// returns error will stop future batches
+					return nil
+				})
+				fmt.Println(result.Error)
+				err = result.Error
 
-		f2.Close()
-		f3.Close()
-		constFile.Close()
-		csvFile.Close()
+			}
+			csvFileO.Close()
+			return err
+		})
 
-		//Start a simulation
-		//dotnet apsim.dll run f /pathToApsimxFile
-		//os.Chdir("../../apsim-cli/netcoreapp3.1")
-		//wd, _ := os.Getwd()
-		//fmt.Println("Current working dir:", wd)
-		cmd := exec.Command("dotnet", "apsim.dll", "run", "--single-threaded", "f", absPathApsimx)
-		//sad sam u apsimu
-		cmd.Dir = "../apsim-cli/netcoreapp3.1"
-		_ = cmd.Run()
+		fmt.Println("Waiting for workers to finish")
+		err = g.Wait()
+		fmt.Println(err) //prints done
+		fmt.Println("Closing channel")
+		close(ch)
+		//// remember current time im YYYYMMDD format
+		//currentDate := time.Now().Format("20060102")
+		//fmt.Println("Current date:", currentDate)
 		//
-		//Read from DB
-		//os.Chdir("./../../apsim-api/apsim")
-		//wd, _ = os.Getwd()
-		//fmt.Println("Current working dir:", wd)
-		baseF := filepath.Base(f.Name())
-		fNoExt := baseF[:len(baseF)-len(filepath.Ext(baseF))]
-		dbFile := filepath.Join(filepath.Dir(absPathApsimx), fNoExt+".db")
-		fmt.Println("Opening db file:", dbFile)
-		db, _ := gorm.Open(sqlite.Open(dbFile), &gorm.Config{})
+		//// ...yield?from=01011990&to=01012000&locationId=1&cultureId=1
+		////get stuff from URL- locationId and cultureId
+		//params := mux.Vars(r)
+		//locationId, err := strconv.ParseInt(params["locationId"], 10, 32)
+		//if err != nil {
+		//	w.WriteHeader(http.StatusInternalServerError)
+		//	fmt.Fprintf(w, "Error in fetching yield: invalid locationId")
+		//	return
+		//}
+		//cultureId, err := strconv.ParseUint(params["cultureId"], 10, 32)
+		//if err != nil {
+		//	w.WriteHeader(http.StatusInternalServerError)
+		//	fmt.Fprintf(w, "Error in fetching yield: invalid cultureId")
+		//	return
+		//}
+		////get stuff from URL- fromDate and toDate
+		//urlParams := r.URL.Query()
+		//fromDate, err := time.Parse("20060102", urlParams.Get("from"))
+		//if err != nil {
+		//	w.WriteHeader(http.StatusInternalServerError)
+		//	fmt.Fprintf(w, "Error in fetching yield: invalid fromDate")
+		//	return
+		//}
+		//toDate, err := time.Parse("20060102", urlParams.Get("to"))
+		//if err != nil {
+		//	w.WriteHeader(http.StatusInternalServerError)
+		//	fmt.Fprintf(w, "Error in fetching yield: invalid toDate")
+		//	return
+		//}
+		//fmt.Println("LocationId:", locationId, "cultureId:", cultureId, "fromDate:", fromDate, "toDate:", toDate)
+		//
+		////Prepare response
+		////var yields []struct {
+		////	Year  int32
+		////	Yield float32
+		////}
+		//
+		//yields := []struct {
+		//	Year  int32
+		//	Yield float32
+		//}{}
+		//
+		////Check if the result is already cached in InfluxDB before running simulation
+		//fluxQueryStr := fmt.Sprintf(`from(bucket:"apsim")
+		//		|> range(start: 0)
+		//		|> filter(fn: (r) => r._measurement == "simulation" and r["location_id"] == "%d" and r["culture_id"] == "%d" and r["from"] == "%d" and r["to"] == "%d")
+		//        |> sort(columns: ["_time"], desc: true)
+		//        |> first()
+		//        |> group()
+		//        `, locationId, cultureId, fromDate.Year(), toDate.Year())
+		//
+		//fmt.Println(fluxQueryStr)
+		//
+		//resultIterator, err := app.Writer.Read(context.TODO(), fluxQueryStr)
+		//flag := true
+		//if err == nil {
+		//	// Iterate over query response
+		//	for resultIterator.Next() {
+		//
+		//		// Access data
+		//		fmt.Printf("field: %s, value: %v\n", resultIterator.Record().Field(), resultIterator.Record().Value())
+		//		year := resultIterator.Record().Field()
+		//		yearInt, err := strconv.ParseInt(year, 10, 32)
+		//		if err != nil {
+		//			flag = false
+		//			fmt.Println("Cant parse field from influx db", err.Error())
+		//			break
+		//		}
+		//		yieldFloat, ok := resultIterator.Record().Value().(float64)
+		//		if !ok {
+		//			flag = false
+		//			fmt.Println("Cant parse value from influx db")
+		//			break
+		//		}
+		//		yields = append(yields, struct {
+		//			Year  int32
+		//			Yield float32
+		//		}{Year: int32(yearInt), Yield: float32(yieldFloat)})
+		//	}
+		//	// Check for an error
+		//	if resultIterator.Err() != nil {
+		//		flag = false
+		//		fmt.Printf("query parsing error: %s\n", resultIterator.Err().Error())
+		//	}
+		//} else {
+		//	fmt.Println(err)
+		//}
+		//
+		//if flag && len(yields) == (toDate.Year()-fromDate.Year()+1) {
+		//	w.Header().Set("Content-Type", "application/json")
+		//	response, _ := json.Marshal(yields)
+		//	w.Write(response)
+		//	return
+		//}
+		//
+		//// Get a location(latitude and longitude) based on URL ID and get a culture needed later for apsimx file
+		//location := &models.Location{ID: uint32(locationId)}
+		//err = location.GetLocationById(app)
+		//if err != nil {
+		//	w.WriteHeader(http.StatusInternalServerError)
+		//	fmt.Fprintf(w, "Error in fetching yield: locationId doesn't exist")
+		//	return
+		//}
+		//fmt.Println("Location:", location)
+		//culture := &models.Culture{ID: uint32(cultureId)}
+		//fmt.Println("culture:", culture)
+		//
+		//// Get a soil(data) based on LocationId for apsimx file
+		//soil := &models.Soil{LocationID: uint32(locationId)}
+		//err = soil.GetSoilByLocationId(app)
+		//if err != nil {
+		//	w.WriteHeader(http.StatusInternalServerError)
+		//	fmt.Fprintf(w, "Error in fetching soil: soil doesn't exist for given locationID %d", locationId)
+		//	return
+		//}
+		//fmt.Println("Soil:", soil)
+		////Position in apsim folder
+		////os.Chdir("./apsim")
+		////newDir, _ := os.Getwd()
+		////fmt.Println("Current working dir:", newDir)
+		//
+		////Create temp apsimx file in stage area
+		//f, err := os.CreateTemp("./apsim", "apsimxFile*.apsimx")
+		//if err != nil {
+		//	w.WriteHeader(http.StatusInternalServerError)
+		//	fmt.Fprintf(w, "Error in fetching yield: temporary apsimx can't be created")
+		//	return
+		//}
+		//
+		//////Abs filepath of apsimx file depending on OS
+		////absPath := filepath.Join(newDir, f.Name())
+		//
+		//absPathApsimx, _ := filepath.Abs(f.Name())
+		//fmt.Println("Absolute path of apsimx file:", absPathApsimx)
+		//////On windows have to use "C:\\etc\\" because of C#
 		////
-
-		db.Raw(`SELECT strftime('%Y', date) as year, sum(yield) as yield FROM report GROUP BY year`).Scan(&yields)
-		fmt.Println("yields:", yields)
-		dbC, _ := db.DB()
-		dbC.Close()
-		w.Header().Set("Content-Type", "application/json")
-		response, _ := json.Marshal(yields)
-		w.Write(response)
-
-		//[{1900 60376.05} {1901 58013.273} {1902 849.8151}]
-
-		//Write to influx db
-		var fields []influx.Field
-		for _, yield := range yields {
-			fields = append(fields, influx.Field{strconv.FormatInt(int64(yield.Year), 10), yield.Yield})
-		}
-		err = app.Writer.Write(
-			context.TODO(),
-			"simulation",
-			[]influx.Tag{
-				{"location_id", strconv.FormatInt(locationId, 10)},
-				{"culture_id", strconv.FormatUint(cultureId, 10)},
-				{"from", strconv.FormatInt(int64(fromDate.Year()), 10)},
-				{"to", strconv.FormatInt(int64(toDate.Year()), 10)},
-			},
-			fields)
-		fmt.Println(err)
-
-		//Clear stage area
-		os.Remove(absPathApsimx)
-		os.Remove(absPathConst)
-		os.Remove(absPathCsv)
-		os.Remove(dbFile)
+		//////Create a CSV file
+		//f2, _ := os.CreateTemp("./apsim", "csv*.csv")
+		//absPathCsv, _ := filepath.Abs(f2.Name())
+		//fmt.Println("Absolute path of csv file:", absPathCsv)
+		////fmt.Println(filepath.Base(f2.Name()))
+		////fmt.Println(filepath.Join(newDir, f2.Name()))
+		//csvFile, _ := os.OpenFile(absPathCsv, os.O_APPEND|os.O_WRONLY, 0644)
+		////csvFile.WriteString("kek")
+		//
+		////Load the data from DB
+		////Load in batch
+		////Write into CSV
+		////Write first line
+		//csvFile.WriteString("year,day,radn,maxt,mint,rain,pan,vp,code\n")
+		//results := &[]models.MicroclimateReading{}
+		//buff := []models.MicroclimateReading{}
+		//counter := 0
+		////fix >= doesnt work on start so less than 1 day, fix format myb?
+		//result := app.DB.Client.Debug().Where("location_id = ? AND date >= ? AND date <= ?", location.ID, fromDate.AddDate(0, 0, -1), toDate).FindInBatches(results, 102, func(tx *gorm.DB, batch int) error {
+		//	for _, result := range *results {
+		//		// batch processing found records
+		//		//fmt.Println(result)
+		//		counter += 1
+		//		buff = append(buff, result)
+		//		if counter == 6 {
+		//			rowDate, _ := time.Parse("2006-01-02", buff[0].Date)
+		//			csvRow := fmt.Sprintf("%d,%d,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%d\n", rowDate.Year(), rowDate.YearDay(), buff[0].Value, buff[1].Value, buff[2].Value, buff[3].Value, buff[4].Value, buff[5].Value, 3000)
+		//			csvFile.WriteString(csvRow)
+		//			counter = 0
+		//			buff = nil
+		//		}
+		//
+		//	}
+		//	//tx.Save(&results)
+		//
+		//	//fmt.Println(tx.RowsAffected) // number of records in this batch
+		//
+		//	//fmt.Println(batch) // Batch 1, 2, 3
+		//
+		//	// returns error will stop future batches
+		//	return nil
+		//})
+		//fmt.Println(result.Error)
+		////
+		////if toDate is greater than max from db fetch from predicted microclimateReading table
+		//microclimateReading := models.MicroclimateReading{LocationID: uint32(locationId)}
+		//_ = microclimateReading.GetLatestMicroclimateReading(app)
+		//fmt.Println(microclimateReading)
+		//lastTime, _ := time.Parse("2006-01-02", microclimateReading.Date)
+		//if toDate.After(lastTime) {
+		//	results := &[]models.PredictedMicroclimateReading{}
+		//	buff := []models.PredictedMicroclimateReading{}
+		//	counter := 0
+		//	result := app.DB.Client.Debug().Where("location_id = ? AND date >= ? AND date <= ?", location.ID, fromDate.AddDate(0, 0, -1), toDate).FindInBatches(results, 102, func(tx *gorm.DB, batch int) error {
+		//		for _, result := range *results {
+		//			// batch processing found records
+		//			//fmt.Println(result)
+		//			counter += 1
+		//			buff = append(buff, result)
+		//			if counter == 6 {
+		//				rowDate, _ := time.Parse("2006-01-02", buff[0].Date)
+		//				csvRow := fmt.Sprintf("%d,%d,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%d\n", rowDate.Year(), rowDate.YearDay(), buff[0].Value, buff[1].Value, buff[2].Value, buff[3].Value, buff[4].Value, buff[5].Value, 3000)
+		//				csvFile.WriteString(csvRow)
+		//				counter = 0
+		//				buff = nil
+		//			}
+		//
+		//		}
+		//		//tx.Save(&results)
+		//
+		//		//fmt.Println(tx.RowsAffected) // number of records in this batch
+		//
+		//		//fmt.Println(batch) // Batch 1, 2, 3
+		//
+		//		// returns error will stop future batches
+		//		return nil
+		//	})
+		//	fmt.Println(result.Error)
+		//
+		//}
+		//
+		////Create a consts file
+		//f3, _ := os.CreateTemp("./apsim", "const*.txt")
+		//absPathConst, _ := filepath.Abs(f3.Name())
+		////fmt.Println(filepath.Base(f3.Name()))
+		////fmt.Println(filepath.Join(newDir, f3.Name()))
+		//constFile, _ := os.OpenFile(absPathConst, os.O_APPEND|os.O_WRONLY, 0644)
+		//
+		////Write into consts file
+		//constFile.WriteString(fmt.Sprintf("location = %s\n", location.Name))
+		//constFile.WriteString(fmt.Sprintf("latitude = %.2f (DECIMAL DEGREES)\n", location.Latitude))
+		//constFile.WriteString(fmt.Sprintf("longitude = %.2f (DECIMAL DEGREES)\n", location.Longitude))
+		//
+		////Get json for apsimx file and write to it
+		//res := apsimx.NewBarleyApsimx2(fromDate, toDate, absPathCsv, absPathConst, soil.Data)
+		//
+		//f.WriteString(res)
+		//f.Close()
+		//
+		//f2.Close()
+		//f3.Close()
+		//constFile.Close()
+		//csvFile.Close()
+		//
+		////Start a simulation
+		////dotnet apsim.dll run f /pathToApsimxFile
+		////os.Chdir("../../apsim-cli/netcoreapp3.1")
+		////wd, _ := os.Getwd()
+		////fmt.Println("Current working dir:", wd)
+		//cmd := exec.Command("dotnet", "apsim.dll", "run", "--single-threaded", "f", absPathApsimx)
+		////sad sam u apsimu
+		//cmd.Dir = "../apsim-cli/netcoreapp3.1"
+		//_ = cmd.Run()
+		////
+		////Read from DB
+		////os.Chdir("./../../apsim-api/apsim")
+		////wd, _ = os.Getwd()
+		////fmt.Println("Current working dir:", wd)
+		//baseF := filepath.Base(f.Name())
+		//fNoExt := baseF[:len(baseF)-len(filepath.Ext(baseF))]
+		//dbFile := filepath.Join(filepath.Dir(absPathApsimx), fNoExt+".db")
+		//fmt.Println("Opening db file:", dbFile)
+		//db, _ := gorm.Open(sqlite.Open(dbFile), &gorm.Config{})
+		//////
+		//
+		//db.Raw(`SELECT strftime('%Y', date) as year, sum(yield) as yield FROM report GROUP BY year`).Scan(&yields)
+		//fmt.Println("yields:", yields)
+		//dbC, _ := db.DB()
+		//dbC.Close()
+		//w.Header().Set("Content-Type", "application/json")
+		//response, _ := json.Marshal(yields)
+		//w.Write(response)
+		//
+		////[{1900 60376.05} {1901 58013.273} {1902 849.8151}]
+		//
+		////Write to influx db
+		//var fields []influx.Field
+		//for _, yield := range yields {
+		//	fields = append(fields, influx.Field{strconv.FormatInt(int64(yield.Year), 10), yield.Yield})
+		//}
+		//err = app.Writer.Write(
+		//	context.TODO(),
+		//	"simulation",
+		//	[]influx.Tag{
+		//		{"location_id", strconv.FormatInt(locationId, 10)},
+		//		{"culture_id", strconv.FormatUint(cultureId, 10)},
+		//		{"from", strconv.FormatInt(int64(fromDate.Year()), 10)},
+		//		{"to", strconv.FormatInt(int64(toDate.Year()), 10)},
+		//	},
+		//	fields)
+		//fmt.Println(err)
+		//
+		////Clear stage area
+		//os.Remove(absPathApsimx)
+		//os.Remove(absPathConst)
+		//os.Remove(absPathCsv)
+		//os.Remove(dbFile)
 	})
 }

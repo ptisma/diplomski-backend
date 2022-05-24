@@ -74,6 +74,7 @@ func BackgroundUpdate(app *application.Application) {
 
 			scanner := bufio.NewScanner(&buf)
 			counter := 0
+			var doubleBreak = false
 			//var microclimateReadings []models.MicroclimateReading
 			//var mR *models.MicroclimateReading
 			for scanner.Scan() {
@@ -104,12 +105,14 @@ func BackgroundUpdate(app *application.Application) {
 						val, err := strconv.ParseFloat(strings.Trim(line[i], " "), 32)
 						if err != nil {
 							fmt.Println("Error in parsing float value in row:", err)
-							continue
+							doubleBreak = true
+							break
 						}
 						//Default non existing value in REST API
 						if val == -999.00 {
 							fmt.Println("Error in parsing float value -999.00")
-							continue
+							doubleBreak = true
+							break
 						}
 						newMicroclimateReading := models.MicroclimateReading{
 							MicroclimateID: uint32(i),
@@ -125,6 +128,10 @@ func BackgroundUpdate(app *application.Application) {
 							fmt.Println("Error in creating newMicroclimateReading in DB:", err)
 						}
 
+					}
+					if doubleBreak == true {
+						fmt.Println("Stopping due to false line", line)
+						break
 					}
 				}
 				//Skip first 4 rows to get to the CSV row values
