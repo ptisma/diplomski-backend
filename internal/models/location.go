@@ -12,12 +12,12 @@ type Location struct {
 }
 
 //add context?
-func (l *Location) GetAllLLocations(app *application.Application) (*[]Location, error) {
+func (l *Location) GetAllLLocations(app *application.Application) ([]Location, error) {
 	var err error
-	locations := &[]Location{}
-	err = app.DB.Client.Debug().Model(&Location{}).Find(locations).Error
+	locations := []Location{}
+	err = app.DB.Client.Debug().Model(&Location{}).Find(&locations).Error
 	if err != nil {
-		return &[]Location{}, err
+		return []Location{}, err
 	}
 	return locations, err
 }

@@ -1,7 +1,7 @@
 package getMicroclimate
 
 import (
-	"apsim-api/internal/models"
+	microclimateService2 "apsim-api/internal/services/microclimateService"
 	"apsim-api/pkg/application"
 	"encoding/json"
 	"fmt"
@@ -11,16 +11,28 @@ import (
 func GetMicroclimate(app *application.Application) http.Handler {
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		microclimate := models.Microclimate{}
-		microclimates, err := microclimate.GetAllMicroclimate(app)
+
+		microclimateService := microclimateService2.GetMicroclimateService(app)
+
+		microclimates, err := microclimateService.GetMicroclimates()
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			fmt.Fprintf(w, "Error in fetching microclimate parameters")
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		response, _ := json.Marshal(microclimates)
+		response, _ := json.Marshal(&microclimates)
 		w.Write(response)
+		//microclimate := models.Microclimate{}
+		//microclimates, err := microclimate.GetAllMicroclimate(app)
+		//if err != nil {
+		//	w.WriteHeader(http.StatusInternalServerError)
+		//	fmt.Fprintf(w, "Error in fetching microclimate parameters")
+		//	return
+		//}
+		//w.Header().Set("Content-Type", "application/json")
+		//response, _ := json.Marshal(microclimates)
+		//w.Write(response)
 
 	})
 }

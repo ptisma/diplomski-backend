@@ -2,6 +2,8 @@ package models
 
 import (
 	"apsim-api/pkg/application"
+	"context"
+	"fmt"
 	"gorm.io/gorm"
 	"time"
 )
@@ -76,14 +78,30 @@ func (l *MicroclimateReading) CreateMicroclimateReadingBatch(app *application.Ap
 	return err
 }
 
-func (l *MicroclimateReading) GetBatchMicroclimateReading(app *application.Application, ch chan MicroclimateReading) error {
+func (l *MicroclimateReading) GetBatchMicroclimateReading(app *application.Application, ch chan MicroclimateReading, ctxx context.Context) error {
 	results := []MicroclimateReading{}
-	result := app.DB.Client.Where("location_id = ? AND date >= ? AND date <= ?", l.ID, l.FromDate, l.ToDate).FindInBatches(&results, 100, func(tx *gorm.DB, batch int) error {
+	//fmt.Println("Zovem2")
+	//ctx, _ := context.WithTimeout(context.Background(), 1000*time.Millisecond)
+	//ctxx, cancel := context.WithCancel(ctxx)
+	result := app.DB.Client.Debug().WithContext(ctxx).Where("location_id = ? AND date >= ? AND date <= ?", l.LocationID, l.FromDate.Format("2006-01-02"), l.ToDate.Format("2006-01-02")).FindInBatches(&results, 100, func(tx *gorm.DB, batch int) error {
 		for _, result := range results {
-			ch <- result
+			//cancel()
+			//fmt.Println("result:", result)
+			select {
+			case ch <- result:
+				//fmt.Println("Poslao")
+			case <-ctxx.Done():
+				fmt.Println("ctx batch microclimate", ctxx.Err())
+				//close(ch)
+				return ctxx.Err()
+			}
 		}
 
 		return nil
-	})
-	return result.Error
+	}).Error
+
+	//mainCh <- "END"
+	close(ch)
+
+	return result
 }

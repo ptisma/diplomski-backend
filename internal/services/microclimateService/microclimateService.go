@@ -15,6 +15,10 @@ func (ms *MicroclimateService) GetMicroclimate(name string) (models.Microclimate
 	return tmax, err
 
 }
+func (ms *MicroclimateService) GetMicroclimates() ([]models.Microclimate, error) {
+	m := models.Microclimate{}
+	return m.GetAllMicroclimate(ms.app)
+}
 
 func GetMicroclimateService(app *application.Application) *MicroclimateService {
 	return &MicroclimateService{

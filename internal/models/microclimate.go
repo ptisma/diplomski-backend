@@ -7,15 +7,16 @@ import (
 type Microclimate struct {
 	ID   uint32 `gorm:"primary_key;auto_increment" json:"id"`
 	Name string `gorm:"size:255;not null;unique" json:"name"`
+	Unit string `gorm:"" json:"unit"`
 }
 
 //add context?
-func (l *Microclimate) GetAllMicroclimate(app *application.Application) (*[]Microclimate, error) {
+func (l *Microclimate) GetAllMicroclimate(app *application.Application) ([]Microclimate, error) {
 	var err error
-	microclimates := &[]Microclimate{}
-	err = app.DB.Client.Debug().Model(&Microclimate{}).Find(microclimates).Error
+	microclimates := []Microclimate{}
+	err = app.DB.Client.Debug().Model(&Microclimate{}).Find(&microclimates).Error
 	if err != nil {
-		return &[]Microclimate{}, err
+		return []Microclimate{}, err
 	}
 	return microclimates, err
 }

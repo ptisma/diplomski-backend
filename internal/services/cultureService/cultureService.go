@@ -23,3 +23,10 @@ func (cs *CultureService) GetCulture(cultureId int) (models.Culture, error) {
 	return culture, err
 
 }
+
+func (cs *CultureService) GetCultures() ([]models.Culture, error) {
+
+	culture := models.Culture{}
+	return culture.GetAllCultures(cs.app)
+
+}

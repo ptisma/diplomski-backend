@@ -17,19 +17,19 @@ func BackgroundUpdate(app *application.Application) {
 
 	for {
 		//Fetch all the locations
-		var locations *[]models.Location
+		var locations []models.Location
 		location := &models.Location{}
 		locations, err := location.GetAllLLocations(app)
 		if err != nil {
 			fmt.Println("Error in fetching all locations:", err)
 		}
-		fmt.Println(*locations)
+		fmt.Println(locations)
 
 		//Take the currentTime -2 days since external API updates slow
 		currentTime := time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, -2)
 		fmt.Println(currentTime)
 		//For each location check the last date of any microclimate parameter they are all updated at the same time on external api
-		for _, l := range *locations {
+		for _, l := range locations {
 			fmt.Println(l)
 			microclimateReading := models.MicroclimateReading{LocationID: l.ID}
 			err := microclimateReading.GetLatestMicroclimateReading(app)

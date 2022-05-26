@@ -9,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 	"golang.org/x/sync/errgroup"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -113,7 +114,7 @@ func (mrs *MicroclimateReadingService) GetPredictedMicroclimateReadings(microcli
 	return readings, err
 }
 
-func (mrs *MicroclimateReadingService) GetBatchMicroclimateReadings(locationId int, fromDate, toDate time.Time, ch chan models.MicroclimateReading) error {
+func (mrs *MicroclimateReadingService) GetBatchMicroclimateReadings(locationId int, fromDate, toDate time.Time, ch chan models.MicroclimateReading, ctxx context.Context) error {
 	var err error
 
 	microclimateReading := models.MicroclimateReading{
@@ -121,22 +122,38 @@ func (mrs *MicroclimateReadingService) GetBatchMicroclimateReadings(locationId i
 		FromDate:   fromDate,
 		ToDate:     toDate,
 	}
-	err = microclimateReading.GetBatchMicroclimateReading(mrs.app, ch)
+	fmt.Println("Zovem")
+	err = microclimateReading.GetBatchMicroclimateReading(mrs.app, ch, ctxx)
 
 	return err
 }
 
-func (mrs *MicroclimateReadingService) GenerateCSVFile(locationId int, fromDate, toDate time.Time, ch chan models.Message, mainCh chan models.Message, ctx context.Context, cancel context.CancelFunc) error {
+func (mrs *MicroclimateReadingService) GetBatchPredictedMicroclimateReadings(locationId int, fromDate, toDate time.Time, ch chan models.PredictedMicroclimateReading, ctxx context.Context) error {
 	var err error
 
-	csvFileOrig, csvFileAbs, err := utils.CreateTempStageFile("csv*.txt")
+	predictedMicroclimateReading := models.PredictedMicroclimateReading{
+		LocationID: uint32(locationId),
+		FromDate:   fromDate,
+		ToDate:     toDate,
+	}
+	//fmt.Println("Zovem")
+	err = predictedMicroclimateReading.GetBatchMicroclimateReading(mrs.app, ch, ctxx)
 
-	ch <- models.Message{ID: 1, Payload: csvFileAbs}
-	mainCh <- models.Message{ID: 1, Payload: csvFileAbs}
+	return err
+}
+
+func (mrs *MicroclimateReadingService) GenerateCSVFile(locationId int, fromDate, toDate, lastDate time.Time, ch chan models.Message, mainCh chan models.Message, ctx context.Context, cancel context.CancelFunc) error {
+	defer fmt.Println("CSV ending")
+	var err error
+
+	csvFileOrig, csvFileAbs, err := utils.CreateTempStageFile("csv*.csv")
 	if err != nil {
 		cancel()
 		return err
 	}
+	ch <- models.Message{ID: 1, Payload: csvFileAbs}
+	mainCh <- models.Message{ID: 1, Payload: csvFileAbs}
+
 	fmt.Println("CSVFile abs path:", csvFileAbs)
 
 	//append
@@ -146,47 +163,254 @@ func (mrs *MicroclimateReadingService) GenerateCSVFile(locationId int, fromDate,
 		return err
 	}
 	//first row
-	_, err = csvFile.WriteString("year,day,radn,maxt,mint,rain,pan,vp,code\n")
+	_, err = csvFile.WriteString("year,day,radn,maxt,mint,rain,rh,wind,code\n")
 	if err != nil {
 		cancel()
 		return err
 	}
 
 	//launch a batch getter in separate goroutine
-	g, ctx := errgroup.WithContext(ctx)
-	batchCh := make(chan models.MicroclimateReading)
-	endCh := make(chan string)
-	buff := []models.MicroclimateReading{}
-	counter := 0
-	flag := false
+	g, ctxx := errgroup.WithContext(ctx)
+	batchCh := make(chan models.MicroclimateReading, 50)
+	//endCh := make(chan string, 1)
+	//buff := []models.MicroclimateReading{}
+	//counter := 0
+	//flag := false
 	g.Go(func() error {
-		return mrs.GetBatchMicroclimateReadings(locationId, fromDate, toDate, batchCh)
+		return mrs.GetBatchMicroclimateReadings(locationId, fromDate, toDate, batchCh, ctxx)
 	})
-	for {
-		select {
-		case msg := <-batchCh:
-			counter += 1
-			buff = append(buff, msg)
-			if counter == 6 {
-				rowDate, _ := time.Parse("2006-01-02", buff[0].Date)
-				csvRow := fmt.Sprintf("%d,%d,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%d\n", rowDate.Year(), rowDate.YearDay(), buff[0].Value, buff[1].Value, buff[2].Value, buff[3].Value, buff[4].Value, buff[5].Value, 3000)
-				csvFile.WriteString(csvRow)
-				counter = 0
-				buff = nil
-			}
-		case _ = <-endCh:
-			fmt.Println("Batch goroutine done")
-			flag = true
-			break
-		}
-		if flag == true {
-			break
-		}
+	err = mrs.ReceiveFromBatchAndWrite(csvFile, batchCh, ctxx)
+	if err != nil {
+		cancel()
 	}
+	//for {
+	//	select {
+	//	case msg := <-batchCh:
+	//		fmt.Println("msg:", msg)
+	//		//check if the chan is closed
+	//		if (msg == models.MicroclimateReading{}) {
+	//			fmt.Println("empty struct, chan is closed")
+	//			flag = true
+	//			break
+	//		}
+	//		counter += 1
+	//		buff = append(buff, msg)
+	//		if counter == 6 {
+	//			rowDate, _ := time.Parse("2006-01-02", buff[0].Date)
+	//			csvRow := fmt.Sprintf("%d,%d,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%d\n", rowDate.Year(), rowDate.YearDay(), buff[0].Value, buff[1].Value, buff[2].Value, buff[3].Value, buff[4].Value, buff[5].Value, 3000)
+	//			_, err := csvFile.WriteString(csvRow)
+	//			if err != nil {
+	//				//TODO NEW ERROR OR RETURN CONTEXT ERROR CANCELED
+	//				fmt.Println("batch microclimate error in writing", err)
+	//				cancel()
+	//				flag = true
+	//				break
+	//			}
+	//			counter = 0
+	//			buff = nil
+	//		}
+	//
+	//	case <-ctxx.Done():
+	//		fmt.Println("csv", ctx.Err())
+	//		fmt.Println("ctx done in generate csv file")
+	//		flag = true
+	//		break
+	//		//case _ = <-endCh:
+	//		//	fmt.Println("Batch goroutine done")
+	//		//	flag = true
+	//		//	break
+	//	}
+	//	if flag == true {
+	//		break
+	//	}
+	//}
 
 	err = g.Wait()
 	fmt.Println("Batch error group", err)
-	err = csvFileOrig.Close()
-	err = csvFile.Close()
+	if err != nil {
+		return err
+	}
+	//TODO REFACTOR
+	//Predicted
+	if err == nil && toDate.After(lastDate) {
+
+		g, ctxx := errgroup.WithContext(ctx)
+		batchCh := make(chan models.PredictedMicroclimateReading, 6)
+		//buff := []models.PredictedMicroclimateReading{}
+		//counter := 0
+		//flag := false
+		g.Go(func() error {
+			return mrs.GetBatchPredictedMicroclimateReadings(locationId, lastDate.AddDate(0, 0, 1), toDate, batchCh, ctxx)
+		})
+		fmt.Println("USAO U PREDICTED")
+
+		err = mrs.ReceiveFromPredictedBatchAndWrite(csvFile, batchCh, ctxx)
+		if err != nil {
+			cancel()
+		}
+		//for {
+		//	select {
+		//	case msg := <-batchCh:
+		//		//fmt.Println("msg:", msg)
+		//		//check if the chan is closed
+		//		if (msg == models.PredictedMicroclimateReading{}) {
+		//			fmt.Println("empty struct, chan is closed")
+		//			flag = true
+		//			break
+		//		}
+		//		counter += 1
+		//		buff = append(buff, msg)
+		//		if counter == 6 {
+		//			rowDate, _ := time.Parse("2006-01-02", buff[0].Date)
+		//			csvRow := fmt.Sprintf("%d,%d,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%d\n", rowDate.Year(), rowDate.YearDay(), buff[0].Value, buff[1].Value, buff[2].Value, buff[3].Value, buff[4].Value, buff[5].Value, 3000)
+		//			csvFile.WriteString(csvRow)
+		//			counter = 0
+		//			buff = nil
+		//		}
+		//
+		//	case <-ctx.Done():
+		//		fmt.Println("ctx done in predicted generate csv file")
+		//		flag = true
+		//		break
+		//		//case _ = <-endCh:
+		//		//	fmt.Println("Batch goroutine done")
+		//		//	flag = true
+		//		//	break
+		//	}
+		//	if flag == true {
+		//		break
+		//	}
+		//}
+
+		err = g.Wait()
+		fmt.Println("Predicted Batch error group", err)
+
+	}
+
+	//TODO ERROR CANT SHADOW EXISTING ERROR
+	_ = csvFileOrig.Close()
+
+	_ = csvFile.Close()
+
 	return err
+}
+
+func (mrs *MicroclimateReadingService) ReceiveFromBatchAndWrite(csvFile *os.File, batchCh chan models.MicroclimateReading, ctxx context.Context) error {
+	var err error
+	buff := []models.MicroclimateReading{}
+	counter := 0
+	var sb strings.Builder
+	counterWrite := 0
+	for {
+		select {
+		case msg := <-batchCh:
+			//fmt.Println("msg:", msg)
+			//check if the chan is closed
+			if (msg == models.MicroclimateReading{}) {
+				fmt.Println("empty struct, chan is closed")
+				fmt.Println("remaining buff", buff)
+				fmt.Println("remaining sb", sb.String())
+				_, err = csvFile.WriteString(sb.String())
+				if err != nil {
+					fmt.Println("batch microclimate error in writing", err)
+					return err
+				}
+				return err
+			}
+			counter += 1
+			buff = append(buff, msg)
+			if counter == 6 {
+				rowDate, err := time.Parse("2006-01-02", buff[0].Date)
+				if err != nil {
+					return err
+				}
+				csvRow := fmt.Sprintf("%d,%d,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%d\n", rowDate.Year(), rowDate.YearDay(), buff[0].Value, buff[1].Value, buff[2].Value, buff[3].Value, buff[4].Value, buff[5].Value, 3000)
+				//_, err = csvFile.WriteString(csvRow)
+				sb.WriteString(csvRow)
+				counterWrite += 1
+				if counterWrite == 6 {
+					_, err = csvFile.WriteString(sb.String())
+					if err != nil {
+						fmt.Println("batch microclimate error in writing", err)
+						return err
+					}
+					sb.Reset()
+					counterWrite = 0
+				}
+				counter = 0
+				buff = nil
+			}
+
+		case <-ctxx.Done():
+			fmt.Println("csv", ctxx.Err())
+			fmt.Println("ctx done in generate csv file")
+			return err
+			//case _ = <-endCh:
+			//	fmt.Println("Batch goroutine done")
+			//	flag = true
+			//	break
+		}
+
+	}
+
+}
+
+func (mrs *MicroclimateReadingService) ReceiveFromPredictedBatchAndWrite(csvFile *os.File, batchCh chan models.PredictedMicroclimateReading, ctxx context.Context) error {
+	var err error
+	buff := []models.PredictedMicroclimateReading{}
+	counter := 0
+	var sb strings.Builder
+	counterWrite := 0
+	for {
+		select {
+		case msg := <-batchCh:
+			//fmt.Println("msg:", msg)
+			//check if the chan is closed
+			if (msg == models.PredictedMicroclimateReading{}) {
+				fmt.Println("empty struct, chan is closed")
+				fmt.Println("remaining buff", buff)
+				fmt.Println("remaining sb", sb.String())
+				_, err = csvFile.WriteString(sb.String())
+				if err != nil {
+					fmt.Println("predicted batch microclimate error in writing", err)
+					return err
+				}
+				return err
+			}
+			counter += 1
+			buff = append(buff, msg)
+			if counter == 6 {
+				rowDate, err := time.Parse("2006-01-02", buff[0].Date)
+				if err != nil {
+					return err
+				}
+				csvRow := fmt.Sprintf("%d,%d,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%d\n", rowDate.Year(), rowDate.YearDay(), buff[0].Value, buff[1].Value, buff[2].Value, buff[3].Value, buff[4].Value, buff[5].Value, 3000)
+				//_, err = csvFile.WriteString(csvRow)
+				sb.WriteString(csvRow)
+				counterWrite += 1
+				if counterWrite == 6 {
+					_, err = csvFile.WriteString(sb.String())
+					if err != nil {
+						fmt.Println("predicted batch microclimate error in writing", err)
+						return err
+					}
+					sb.Reset()
+					counterWrite = 0
+				}
+				counter = 0
+				buff = nil
+			}
+
+		case <-ctxx.Done():
+			fmt.Println("predictedcsv", ctxx.Err())
+			fmt.Println("predicted ctx done in generate csv file")
+			return err
+			//case _ = <-endCh:
+			//	fmt.Println("Batch goroutine done")
+			//	flag = true
+			//	break
+		}
+
+	}
+
 }

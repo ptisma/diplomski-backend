@@ -10,12 +10,12 @@ type Culture struct {
 	BaseTemperature     int    `json:"base_temperature"`
 }
 
-func (l *Culture) GetAllCultures(app *application.Application) (*[]Culture, error) {
+func (l *Culture) GetAllCultures(app *application.Application) ([]Culture, error) {
 	var err error
-	cultures := &[]Culture{}
-	err = app.DB.Client.Debug().Model(&Culture{}).Find(cultures).Error
+	cultures := []Culture{}
+	err = app.DB.Client.Debug().Model(&Culture{}).Find(&cultures).Error
 	if err != nil {
-		return &[]Culture{}, err
+		return []Culture{}, err
 	}
 	return cultures, err
 }

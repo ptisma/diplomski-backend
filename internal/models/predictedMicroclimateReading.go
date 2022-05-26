@@ -2,7 +2,9 @@ package models
 
 import (
 	"apsim-api/pkg/application"
+	"context"
 	"fmt"
+	"gorm.io/gorm"
 	"time"
 )
 
@@ -60,4 +62,28 @@ func (l *PredictedMicroclimateReading) GetLatestPredictedMicroclimateReading(app
 
 	return err
 
+}
+
+func (l *PredictedMicroclimateReading) GetBatchMicroclimateReading(app *application.Application, ch chan PredictedMicroclimateReading, ctxx context.Context) error {
+	results := []PredictedMicroclimateReading{}
+	//ctx, _ := context.WithTimeout(context.Background(), 1000*time.Millisecond)
+	//ctx := context.Background()
+	result := app.DB.Client.WithContext(ctxx).Where("location_id = ? AND date >= ? AND date <= ?", l.LocationID, l.FromDate.Format("2006-01-02"), l.ToDate.Format("2006-01-02")).FindInBatches(&results, 100, func(tx *gorm.DB, batch int) error {
+		for _, result := range results {
+			//fmt.Println("result:", result)
+			select {
+			case ch <- result:
+				//fmt.Println("Poslao")
+			case <-ctxx.Done():
+				fmt.Println("CTX DONE:", ctxx.Err())
+				return ctxx.Err()
+			}
+		}
+
+		return nil
+	}).Error
+	//mainCh <- "END"
+	close(ch)
+
+	return result
 }

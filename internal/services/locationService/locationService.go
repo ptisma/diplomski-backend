@@ -31,6 +31,11 @@ func (ls *LocationService) GetLocation(locationId int) (models.Location, error) 
 
 }
 
+func (ls *LocationService) GetLocations() ([]models.Location, error) {
+	location := models.Location{}
+	return location.GetAllLLocations(ls.app)
+}
+
 func (ls *LocationService) GenerateConstsFile(location models.Location, ch chan models.Message, mainCh chan models.Message, ctx context.Context, cancel context.CancelFunc) error {
 	var err error
 	defer fmt.Println("Consts ending")
@@ -69,7 +74,7 @@ func (ls *LocationService) GenerateConstsFile(location models.Location, ch chan 
 
 }
 
-func (ls *LocationService) GenerateAPSIMXFile(fromDate, toDate time.Time, soil models.Soil, ch chan models.Message, mainCh chan models.Message, ctx context.Context, cancel context.CancelFunc) error {
+func (ls *LocationService) GenerateAPSIMXFile(cultureId int, fromDate, toDate time.Time, soil models.Soil, ch chan models.Message, mainCh chan models.Message, ctx context.Context, cancel context.CancelFunc) error {
 	defer fmt.Println("APSIMX ending")
 	var err error
 	apsimxFile, apsimxFileAbs, err := utils.CreateTempStageFile("apsimxFile*.apsimx")
@@ -99,8 +104,12 @@ func (ls *LocationService) GenerateAPSIMXFile(fromDate, toDate time.Time, soil m
 				counter += 1
 				break
 			default:
+				cancel()
 				return errors.New("Received unexpected message")
 			}
+		//not sure if this is correct to place here and return that
+		case <-ctx.Done():
+			return ctx.Err()
 		default:
 			if counter == 2 {
 				flag = true
@@ -112,17 +121,18 @@ func (ls *LocationService) GenerateAPSIMXFile(fromDate, toDate time.Time, soil m
 			break
 		}
 	}
-	apsimxBody := apsimx.NewBarleyApsimx2(fromDate, toDate, csvFilePath, constsFilePath, soil.Data)
+	//TODO
+	apsimBodyInit, _ := apsimx.InitiateAPSIMCulture[cultureId]
+	apsimxBody := apsimBodyInit(fromDate, toDate, csvFilePath, constsFilePath, soil.Data)
 	_, err = apsimxFile.WriteString(apsimxBody)
 	if err != nil {
 		cancel()
 		return err
 	}
-	err = apsimxFile.Close()
-	if err != nil {
-		cancel()
-		return err
-	}
+	//can simulation run without apsimx file being closed(it can)
+	//	cancel()
+	//	return err
+	//}
 	return err
 
 }
