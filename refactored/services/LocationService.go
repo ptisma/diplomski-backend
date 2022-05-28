@@ -13,13 +13,13 @@ type LocationService struct {
 	I interfaces.ILocationRepository
 }
 
-func (s *LocationService) GetAllLocations() ([]models.Location, error) {
+func (s *LocationService) GetAllLocations(ctx context.Context) ([]models.Location, error) {
 	fmt.Println("Sad sam u servisu")
-	return s.I.GetAllLocations()
+	return s.I.GetAllLocations(ctx)
 }
 
-func (r *LocationService) GetLocationById(locationId int) (models.Location, error) {
-	return r.I.GetLocationById(locationId)
+func (r *LocationService) GetLocationById(ctx context.Context, locationId int) (models.Location, error) {
+	return r.I.GetLocationById(ctx, locationId)
 }
 
 func (r *LocationService) GenerateConstsFile(locationName string, locationLatitude, locationLongitude float32, ch chan models.Message, mainCh chan models.Message, ctxx context.Context) error {

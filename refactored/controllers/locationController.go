@@ -2,9 +2,11 @@ package controllers
 
 import (
 	"apsim-api/refactored/interfaces"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 )
 
 type LocationController struct {
@@ -13,7 +15,8 @@ type LocationController struct {
 
 func (c *LocationController) GetLocations(w http.ResponseWriter, r *http.Request) {
 
-	locations, err := c.GetAllLocations()
+	ctx, _ := context.WithTimeout(r.Context(), 5*time.Second)
+	locations, err := c.GetAllLocations(ctx)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "Error in fetching cultures")

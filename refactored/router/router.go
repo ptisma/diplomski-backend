@@ -3,9 +3,7 @@ package router
 import (
 	"apsim-api/refactored/router/middlewares"
 	"apsim-api/refactored/serviceContainer"
-	"fmt"
 	"github.com/gorilla/mux"
-	"net/http"
 	"sync"
 )
 
@@ -22,7 +20,7 @@ func (r *router) InitRouter() *mux.Router {
 	microclimateController := serviceContainer.ServiceContainer().InjectMicroclimateController()
 	microclimateReadingController := serviceContainer.ServiceContainer().InjectMicroclimateReadingController()
 	yieldController := serviceContainer.ServiceContainer().InjectYieldController()
-
+	growingDegreeDayController := serviceContainer.ServiceContainer().InjectGrowingDegreeDayController()
 	mux := mux.NewRouter()
 
 	mux.HandleFunc("/culture", cultureController.GetCultures).Methods("GET")
@@ -40,11 +38,7 @@ func (r *router) InitRouter() *mux.Router {
 	//nested endpoints
 	microclimateRouter.HandleFunc("", microclimateReadingController.GetMicroclimateReadings).Methods("GET")
 	cultureRouter.HandleFunc("/yield", yieldController.GetYield).Methods("GET")
-
-	mux.HandleFunc("/test", func(writer http.ResponseWriter, request *http.Request) {
-		fmt.Println("Hello world")
-
-	}).Methods("GET")
+	cultureRouter.HandleFunc("/gdd", growingDegreeDayController.GetGrowingDegreeDays).Methods("GET")
 
 	return mux
 

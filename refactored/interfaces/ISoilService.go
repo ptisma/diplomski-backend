@@ -1,7 +1,10 @@
 package interfaces
 
-import "apsim-api/refactored/models"
+import (
+	"apsim-api/refactored/models"
+	"context"
+)
 
 type ISoilService interface {
-	GetSoilByLocationId(locationId int) (models.Soil, error)
+	GetSoilByLocationId(ctx context.Context, locationId int) (models.Soil, error)
 }

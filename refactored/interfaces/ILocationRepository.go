@@ -1,8 +1,11 @@
 package interfaces
 
-import "apsim-api/refactored/models"
+import (
+	"apsim-api/refactored/models"
+	"context"
+)
 
 type ILocationRepository interface {
-	GetAllLocations() ([]models.Location, error)
-	GetLocationById(locationId int) (models.Location, error)
+	GetAllLocations(ctx context.Context) ([]models.Location, error)
+	GetLocationById(ctx context.Context, locationId int) (models.Location, error)
 }

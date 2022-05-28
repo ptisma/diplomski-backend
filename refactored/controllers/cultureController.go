@@ -2,9 +2,11 @@ package controllers
 
 import (
 	"apsim-api/refactored/interfaces"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 )
 
 type CultureController struct {
@@ -13,7 +15,9 @@ type CultureController struct {
 
 func (c *CultureController) GetCultures(w http.ResponseWriter, r *http.Request) {
 
-	cultures, err := c.FetchAllCultures()
+	ctx, _ := context.WithTimeout(r.Context(), 5*time.Second)
+
+	cultures, err := c.FetchAllCultures(ctx)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "Error in fetching cultures")

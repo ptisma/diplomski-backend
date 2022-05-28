@@ -12,13 +12,13 @@ type PredictedMicroclimateReadingRepository struct {
 	DB *gorm.DB
 }
 
-func (r *PredictedMicroclimateReadingRepository) GetMicroClimateReadings(microclimateID, locationID int, fromDate, toDate time.Time) ([]models.PredictedMicroclimateReading, error) {
+func (r *PredictedMicroclimateReadingRepository) GetMicroClimateReadings(ctx context.Context, microclimateID, locationID int, fromDate, toDate time.Time) ([]models.PredictedMicroclimateReading, error) {
 
 	var err error
 	microclimates := []models.PredictedMicroclimateReading{}
 	queryStr := "microclimate_id = ? AND location_id = ? AND date <= ? AND date >= ?"
 
-	err = r.DB.Debug().Preload("Location").Model(&models.PredictedMicroclimateReading{}).Preload("Microclimate").Where(queryStr, microclimateID, locationID, toDate.Format("2006-01-02"), fromDate.Format("2006-01-02")).Group("microclimate_id,location_id,date").Order("date").Find(&microclimates).Error
+	err = r.DB.WithContext(ctx).Debug().Preload("Location").Model(&models.PredictedMicroclimateReading{}).Preload("Microclimate").Where(queryStr, microclimateID, locationID, toDate.Format("2006-01-02"), fromDate.Format("2006-01-02")).Group("microclimate_id,location_id,date").Order("date").Find(&microclimates).Error
 	if err != nil {
 		return []models.PredictedMicroclimateReading{}, err
 	}
@@ -26,13 +26,13 @@ func (r *PredictedMicroclimateReadingRepository) GetMicroClimateReadings(microcl
 
 }
 
-func (r *PredictedMicroclimateReadingRepository) GetLatestMicroClimateReading(locationID int) (models.PredictedMicroclimateReading, error) {
+func (r *PredictedMicroclimateReadingRepository) GetLatestMicroClimateReading(ctx context.Context, locationID int) (models.PredictedMicroclimateReading, error) {
 
 	var err error
 	microclimateReading := models.PredictedMicroclimateReading{}
 	queryStr := "location_id = ?"
 
-	err = r.DB.Debug().Preload("Location").Model(&models.PredictedMicroclimateReading{}).Preload("Microclimate").Where(queryStr, locationID).Order("date desc").First(&microclimateReading).Error
+	err = r.DB.WithContext(ctx).Debug().Preload("Location").Model(&models.PredictedMicroclimateReading{}).Preload("Microclimate").Where(queryStr, locationID).Order("date desc").First(&microclimateReading).Error
 
 	return microclimateReading, err
 }

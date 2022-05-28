@@ -3,7 +3,9 @@ package controllers
 import (
 	"apsim-api/refactored/interfaces"
 	"apsim-api/refactored/models"
+	"apsim-api/refactored/utils"
 	"context"
+	"encoding/json"
 	"fmt"
 	"golang.org/x/sync/errgroup"
 	"net/http"
@@ -15,9 +17,12 @@ type YieldController struct {
 	CultureService             interfaces.ICultureService
 	MicroclimateReadingService interfaces.IMicroclimateReadingService
 	SoilService                interfaces.ISoilService
+	YieldService               interfaces.IYieldService
 }
 
 func (c *YieldController) GetYield(w http.ResponseWriter, r *http.Request) {
+
+	ctx, _ := context.WithTimeout(r.Context(), 20*time.Second)
 
 	//Retrieving locationId and cultureID from middlewares
 	locationId, _ := r.Context().Value("locationId").(uint64)
@@ -40,7 +45,7 @@ func (c *YieldController) GetYield(w http.ResponseWriter, r *http.Request) {
 	}
 	fmt.Println("locationId:", locationId, "cultureId:", cultureId, "fromDate:", fromDate, "toDate:", toDate)
 
-	location, err := c.LocationService.GetLocationById(int(locationId))
+	location, err := c.LocationService.GetLocationById(ctx, int(locationId))
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "Error in fetching location: locationId doesn't exist")
@@ -48,7 +53,7 @@ func (c *YieldController) GetYield(w http.ResponseWriter, r *http.Request) {
 	}
 	fmt.Println("Location:", location)
 
-	latestMicroclimateReading, err := c.MicroclimateReadingService.GetLatestMicroClimateReading(int(locationId))
+	latestMicroclimateReading, err := c.MicroclimateReadingService.GetLatestMicroClimateReading(ctx, int(locationId))
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "Error in fetching: latest microclimate reading")
@@ -64,7 +69,7 @@ func (c *YieldController) GetYield(w http.ResponseWriter, r *http.Request) {
 	}
 	fmt.Println("lastTime", lastTime)
 
-	soil, err := c.SoilService.GetSoilByLocationId(int(locationId))
+	soil, err := c.SoilService.GetSoilByLocationId(ctx, int(locationId))
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "Error in fetching soil: soil doesn't exist for given locationID %d", locationId)
@@ -72,8 +77,21 @@ func (c *YieldController) GetYield(w http.ResponseWriter, r *http.Request) {
 	}
 	fmt.Println("Soil:", soil)
 
+	fmt.Println("Checking cache")
+
+	yields, err := c.YieldService.GetYields(ctx, int(locationId), int(cultureId), fromDate, toDate)
+	if err == nil && yields != nil {
+		fmt.Println("Found cached results in InfluxDB")
+		w.Header().Set("Content-Type", "application/json")
+		response, _ := json.Marshal(&yields)
+		w.Write(response)
+		return
+	} else {
+		fmt.Println("Did not found cached results in InfluxDB")
+	}
+
 	fmt.Println("Starting work")
-	ctx, _ := context.WithTimeout(context.Background(), 20*time.Second)
+	//ctx, _ := context.WithTimeout(context.Background(), 20*time.Second)
 	//Prepare goroutines, each for one file(apsimx, csv and consts)
 	g, ctx := errgroup.WithContext(ctx)
 	//Make a buffered channel for shared communication because apsimx goroutine needs the filepaths of other two files
@@ -106,5 +124,47 @@ func (c *YieldController) GetYield(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fmt.Println("Continue work")
+
+	csvAbsPath, constsAbsPath, apsimxAbsPath := utils.GetStageFilesAbsPaths(mainCh)
+
+	fmt.Println("absolute paths of generated files:", csvAbsPath, constsAbsPath, apsimxAbsPath)
+
+	fmt.Println("Starting simulation")
+	err = utils.RunAPSIMSimulation(apsimxAbsPath)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "Error in running simulation, pick a different from & to")
+		return
+	}
+
+	dbAbsPath := utils.ConstructDBAbsPath(apsimxAbsPath)
+	fmt.Println("dbAbsPath:", dbAbsPath)
+
+	yields, err = utils.ReadAPSIMSimulationResults(dbAbsPath)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "Error in parsing db yield results")
+		return
+	}
+
+	if len(yields) != (toDate.Year() - fromDate.Year() + 1) {
+		fmt.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "Error in fetching db yield results")
+		return
+	}
+
+	fmt.Println("yields:", yields)
+
+	w.Header().Set("Content-Type", "application/json")
+	response, _ := json.Marshal(yields)
+	w.Write(response)
+
+	err = c.YieldService.CreateYields(ctx, int(locationId), int(cultureId), fromDate, toDate, yields)
+	if err != nil {
+		fmt.Println("Error writing in influx db", err)
+	}
 
 }

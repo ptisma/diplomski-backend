@@ -2,9 +2,11 @@ package controllers
 
 import (
 	"apsim-api/refactored/interfaces"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 )
 
 type MicroclimateController struct {
@@ -12,8 +14,8 @@ type MicroclimateController struct {
 }
 
 func (c *MicroclimateController) GetMicroclimates(w http.ResponseWriter, r *http.Request) {
-
-	microclimates, err := c.GetAllMicroclimates()
+	ctx, _ := context.WithTimeout(r.Context(), 5*time.Second)
+	microclimates, err := c.GetAllMicroclimates(ctx)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "Error in fetching microclimate parameters")

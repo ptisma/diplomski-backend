@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"apsim-api/refactored/models"
+	"context"
 	"gorm.io/gorm"
 )
 
@@ -9,10 +10,10 @@ type MicroclimateRepository struct {
 	DB *gorm.DB
 }
 
-func (r *MicroclimateRepository) GetAllMicroclimates() ([]models.Microclimate, error) {
+func (r *MicroclimateRepository) GetAllMicroclimates(ctx context.Context) ([]models.Microclimate, error) {
 	var err error
 	microclimates := []models.Microclimate{}
-	err = r.DB.Debug().Model(&models.Microclimate{}).Find(&microclimates).Error
+	err = r.DB.WithContext(ctx).Debug().Model(&models.Microclimate{}).Find(&microclimates).Error
 	if err != nil {
 		return []models.Microclimate{}, err
 	}
@@ -20,9 +21,9 @@ func (r *MicroclimateRepository) GetAllMicroclimates() ([]models.Microclimate, e
 
 }
 
-func (r *MicroclimateRepository) GetMicroclimateByName(microclimateName string) (models.Microclimate, error) {
+func (r *MicroclimateRepository) GetMicroclimateByName(ctx context.Context, microclimateName string) (models.Microclimate, error) {
 	microclimate := models.Microclimate{}
-	err := r.DB.Debug().Model(&models.Microclimate{}).Where("name = ?", microclimateName).First(&microclimate).Error
+	err := r.DB.WithContext(ctx).Debug().Model(&models.Microclimate{}).Where("name = ?", microclimateName).First(&microclimate).Error
 	return microclimate, err
 
 }

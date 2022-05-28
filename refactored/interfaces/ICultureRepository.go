@@ -1,8 +1,11 @@
 package interfaces
 
-import "apsim-api/refactored/models"
+import (
+	"apsim-api/refactored/models"
+	"context"
+)
 
 type ICultureRepository interface {
-	GetAllCultures() ([]models.Culture, error)
-	GetCultureById(id int) (models.Culture, error)
+	GetAllCultures(ctx context.Context) ([]models.Culture, error)
+	GetCultureById(ctx context.Context, id int) (models.Culture, error)
 }

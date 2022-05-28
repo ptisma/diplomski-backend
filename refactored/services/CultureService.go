@@ -15,13 +15,13 @@ type CultureService struct {
 	interfaces.ICultureRepository
 }
 
-func (s *CultureService) FetchAllCultures() ([]models.Culture, error) {
+func (s *CultureService) FetchAllCultures(ctx context.Context) ([]models.Culture, error) {
 	fmt.Println("Sad sam u servisu")
-	return s.GetAllCultures()
+	return s.GetAllCultures(ctx)
 }
 
-func (s *CultureService) FetchCultureById(id int) (models.Culture, error) {
-	return s.GetCultureById(id)
+func (s *CultureService) FetchCultureById(ctx context.Context, id int) (models.Culture, error) {
+	return s.GetCultureById(ctx, id)
 }
 
 func (s *CultureService) GenerateAPSIMXFile(cultureId int, fromDate, toDate time.Time, soil models.Soil, ch chan models.Message, mainCh chan models.Message, ctx context.Context) error {

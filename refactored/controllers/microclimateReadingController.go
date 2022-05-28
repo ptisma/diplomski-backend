@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"apsim-api/refactored/interfaces"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -13,6 +14,8 @@ type MicroclimateReadingController struct {
 }
 
 func (c *MicroclimateReadingController) GetMicroclimateReadings(w http.ResponseWriter, r *http.Request) {
+
+	ctx, _ := context.WithTimeout(r.Context(), 5*time.Second)
 
 	locationId, _ := r.Context().Value("locationId").(uint64)
 	microclimateId, _ := r.Context().Value("microclimateId").(uint64)
@@ -34,7 +37,7 @@ func (c *MicroclimateReadingController) GetMicroclimateReadings(w http.ResponseW
 	}
 	fmt.Println("locationId:", locationId, "microclimateId:", microclimateId, "fromDate:", fromDate, "toDate:", toDate)
 
-	microclimateReadings, err := c.I.GetMicroclimateReadings(int(microclimateId), int(locationId), fromDate, toDate)
+	microclimateReadings, err := c.I.GetMicroclimateReadings(ctx, int(microclimateId), int(locationId), fromDate, toDate)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "Error in fetching: microclimate readings")
