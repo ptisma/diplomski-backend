@@ -18,27 +18,40 @@ type MicroclimateReadingService struct {
 	I2 interfaces.IPredictedMicroclimateReadingRepository
 }
 
+func (s *MicroclimateReadingService) GetMicroclimateReadingPeriod(ctx context.Context, microclimateID, locationID int) (models.Period, error) {
+	period := models.Period{}
+	firstMicroclimateReading, err := s.I1.GetFirstMicroClimateReading(ctx, locationID)
+	if err != nil {
+		return period, err
+	}
+
+	lastPredictedMicroclimateReading, err := s.I2.GetLatestMicroClimateReading(ctx, locationID)
+	if err != nil {
+		return period, err
+	}
+
+	period.Min = firstMicroclimateReading.Date
+	period.Max = lastPredictedMicroclimateReading.Date
+
+	return period, err
+
+}
+
 func (s *MicroclimateReadingService) CalculateGrowingDegreeDay(ctx context.Context, tmaxReadings []models.MicroclimateReading, tminReadings []models.MicroclimateReading, baseTemp float32) ([]models.GrowingDegreeDay, error) {
 	fmt.Println("Sad sam u servisu")
 	var err error
 	var gdds = []models.GrowingDegreeDay{}
 
 	if len(tmaxReadings) == len(tminReadings) {
+
 		for i, _ := range tmaxReadings {
-			select {
-			case <-ctx.Done():
-				return gdds, ctx.Err()
+			date := tmaxReadings[i].Date
+			gdd := (tmaxReadings[i].Value+tminReadings[i].Value)/2 - float32(baseTemp)
 
-			default:
-				date := tmaxReadings[i].Date
-				gdd := (tmaxReadings[i].Value+tminReadings[i].Value)/2 - float32(baseTemp)
-
-				gdds = append(gdds, models.GrowingDegreeDay{
-					Date:  date,
-					Value: gdd,
-				})
-
-			}
+			gdds = append(gdds, models.GrowingDegreeDay{
+				Date:  date,
+				Value: gdd,
+			})
 
 		}
 	} else {
@@ -55,19 +68,13 @@ func (s *MicroclimateReadingService) CalculatePredictedGrowingDegreeDay(ctx cont
 
 	if len(tmaxReadings) == len(tminReadings) {
 		for i, _ := range tmaxReadings {
-			select {
-			case <-ctx.Done():
-				return gdds, ctx.Err()
+			date := tmaxReadings[i].Date
+			gdd := (tmaxReadings[i].Value+tminReadings[i].Value)/2 - float32(baseTemp)
 
-			default:
-				date := tmaxReadings[i].Date
-				gdd := (tmaxReadings[i].Value+tminReadings[i].Value)/2 - float32(baseTemp)
-
-				gdds = append(gdds, models.GrowingDegreeDay{
-					Date:  date,
-					Value: gdd,
-				})
-			}
+			gdds = append(gdds, models.GrowingDegreeDay{
+				Date:  date,
+				Value: gdd,
+			})
 
 		}
 	} else {
@@ -265,13 +272,19 @@ func (s *MicroclimateReadingService) GenerateCSVFile(locationId int, fromDate, t
 	}
 	//PREDICTED
 	if err == nil && toDate.After(lastDate) {
+		var newFromDate time.Time
+		if fromDate.After(lastDate) {
+			newFromDate = fromDate
+		} else {
+			newFromDate = lastDate.AddDate(0, 0, 1)
+		}
 		g, ctxx := errgroup.WithContext(ctx)
 		batchCh := make(chan models.PredictedMicroclimateReading, 6)
 		//buff := []models.PredictedMicroclimateReading{}
 		//counter := 0
 		//flag := false
 		g.Go(func() error {
-			return s.GetBatchPredictedMicroclimateReading(locationId, lastDate.AddDate(0, 0, 1), toDate, batchCh, ctxx)
+			return s.GetBatchPredictedMicroclimateReading(locationId, newFromDate, toDate, batchCh, ctxx)
 		})
 		fmt.Println("USAO U PREDICTED")
 
@@ -288,4 +301,22 @@ func (s *MicroclimateReadingService) GenerateCSVFile(locationId int, fromDate, t
 
 	return err
 
+}
+
+func (s *MicroclimateReadingService) ConvertPredictedMicroclimateReadings(ctx context.Context, predictedMicroclimateReadings []models.PredictedMicroclimateReading) []models.MicroclimateReading {
+	mr := make([]models.MicroclimateReading, 0, len(predictedMicroclimateReadings))
+	for _, j := range predictedMicroclimateReadings {
+		mr = append(mr, models.MicroclimateReading{
+			ID:             j.ID,
+			MicroclimateID: j.MicroclimateID,
+			Microclimate:   j.Microclimate,
+			LocationID:     j.LocationID,
+			Location:       j.Location,
+			Date:           j.Date,
+			Value:          j.Value,
+			FromDate:       j.FromDate,
+			ToDate:         j.ToDate,
+		})
+	}
+	return mr
 }

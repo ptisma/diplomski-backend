@@ -38,6 +38,17 @@ func (r *MicroclimateReadingRepository) GetMicroClimateReadings(ctx context.Cont
 
 }
 
+func (r *MicroclimateReadingRepository) GetFirstMicroClimateReading(ctx context.Context, locationID int) (models.MicroclimateReading, error) {
+
+	var err error
+	microclimateReading := models.MicroclimateReading{}
+	queryStr := "location_id = ?"
+
+	err = r.DB.WithContext(ctx).Debug().Preload("Location").Model(&models.MicroclimateReading{}).Preload("Microclimate").Where(queryStr, locationID).Order("date").First(&microclimateReading).Error
+
+	return microclimateReading, err
+}
+
 func (r *MicroclimateReadingRepository) GetLatestMicroClimateReading(ctx context.Context, locationID int) (models.MicroclimateReading, error) {
 
 	var err error

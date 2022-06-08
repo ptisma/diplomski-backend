@@ -40,7 +40,7 @@ func (b *background) UpdateMicroclimateReadings() {
 
 	for {
 		//Fetch all the locations
-		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, _ := context.WithTimeout(context.Background(), 5*time.Minute)
 		locations, err := b.I2.GetAllLocations(ctx)
 		if err != nil {
 			fmt.Println("Error in fetching all locations:", err)
@@ -68,7 +68,7 @@ func (b *background) UpdateMicroclimateReadings() {
 				fmt.Println("Error in parsing date in latest microclimateReading:", err)
 				continue
 			}
-			//fmt.Println("targetTime:", targetTime)
+			fmt.Println("targetTime:", targetTime)
 
 			//Difference in days from current time and lastest time in DB
 			diff := currentTime.Sub(targetTime) / (24 * time.Hour)
@@ -80,11 +80,11 @@ func (b *background) UpdateMicroclimateReadings() {
 
 			start := targetTime.AddDate(0, 0, 1).Format("20060102")
 			stop := targetTime.AddDate(0, 0, int(diff)).Format("20060102")
-			//fmt.Println("start:", start, "stop:", stop)
+			fmt.Println("start:", start, "stop:", stop)
 
 			//External REST api
 			url := fmt.Sprintf("https://worldmodel.csiro.au/gclimate?lat=%f&lon=%f&format=csv&start=%s&stop=%s", l.Latitude, l.Longitude, start, stop)
-			//fmt.Println("URL:", url)
+			fmt.Println("URL:", url)
 
 			var buf bytes.Buffer
 			resp, err := http.Get(url)
@@ -99,7 +99,7 @@ func (b *background) UpdateMicroclimateReadings() {
 			//var microclimateReadings []models.MicroclimateReading
 			//var mR *models.MicroclimateReading
 			for scanner.Scan() {
-				if counter > 3 {
+				if counter > 2 {
 					//Line example: 2022-01-01, 6.20,11.33, 0.91, 3.06,77.88, 0.99
 					line := strings.Split(scanner.Text(), ",")
 					//fmt.Println("Line:", line)

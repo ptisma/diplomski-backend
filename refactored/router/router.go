@@ -36,6 +36,7 @@ func (r *router) InitRouter() *mux.Router {
 	microclimateRouter.Use(middlewares.MicroclimateMiddleware)
 
 	//nested endpoints
+	locationRouter.HandleFunc("/microclimate/all/period", microclimateReadingController.GetMicroclimateReadingPeriod).Methods("GET")
 	microclimateRouter.HandleFunc("", microclimateReadingController.GetMicroclimateReadings).Methods("GET")
 	cultureRouter.HandleFunc("/yield", yieldController.GetYield).Methods("GET")
 	cultureRouter.HandleFunc("/gdd", growingDegreeDayController.GetGrowingDegreeDays).Methods("GET")

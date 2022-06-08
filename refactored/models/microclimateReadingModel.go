@@ -16,3 +16,7 @@ type MicroclimateReading struct {
 	FromDate time.Time `gorm:"-:all" json:"-" `
 	ToDate   time.Time `gorm:"-:all" json:"-"`
 }
+
+type IMicroclimateReading interface {
+	MicroclimateReading | PredictedMicroclimateReading
+}

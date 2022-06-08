@@ -66,8 +66,8 @@ func (c *GrowingDegreeDayController) GetGrowingDegreeDays(w http.ResponseWriter,
 	}
 	//tmax := models.Microclimate{Name: "tmax"}
 	//tmax.GetMicroclimateByName(app)
-	fmt.Println("tmax:", tmax)
-	fmt.Println("tmin:", tmin)
+	//fmt.Println("tmax:", tmax)
+	//fmt.Println("tmin:", tmin)
 
 	x, err := c.MicroclimateReadingService.GetMicroclimateReadings(ctx, int(tmax.ID), int(locationId), fromDate, toDate)
 	if err != nil {
@@ -121,24 +121,34 @@ func (c *GrowingDegreeDayController) GetGrowingDegreeDays(w http.ResponseWriter,
 	}
 
 	if toDate.After(lastDate) {
-		x, err := c.MicroclimateReadingService.GetPredictedMicroclimateReadings(ctx, int(tmax.ID), int(locationId), lastDate.AddDate(0, 0, 1), toDate)
+		var newFromDate time.Time
+		if fromDate.After(lastDate) {
+			newFromDate = fromDate
+		} else {
+			newFromDate = lastDate.AddDate(0, 0, 1)
+		}
+		x, err := c.MicroclimateReadingService.GetPredictedMicroclimateReadings(ctx, int(tmax.ID), int(locationId), newFromDate, toDate)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			fmt.Fprintf(w, "Error in fetching: tmax predicted microclimate readings")
 			return
 		}
 
-		y, err := c.MicroclimateReadingService.GetPredictedMicroclimateReadings(ctx, int(tmin.ID), int(locationId), lastDate.AddDate(0, 0, 1), toDate)
+		fmt.Println("predicted x:", x)
+
+		y, err := c.MicroclimateReadingService.GetPredictedMicroclimateReadings(ctx, int(tmin.ID), int(locationId), newFromDate, toDate)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			fmt.Fprintf(w, "Error in fetching: tmin predicted microclimate readings")
 			return
 		}
 
+		fmt.Println("predicted y:", y)
+
 		predictedGdds, err := c.MicroclimateReadingService.CalculatePredictedGrowingDegreeDay(ctx, x, y, culture.BaseTemperature)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			fmt.Fprintf(w, "Error in calculating: history growing degree days")
+			fmt.Fprintf(w, "Error in calculating: predicted growing degree days")
 			return
 		}
 		fmt.Println("predictedGdds:", predictedGdds)

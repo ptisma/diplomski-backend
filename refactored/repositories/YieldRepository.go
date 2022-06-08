@@ -71,6 +71,8 @@ func (r *YieldRepository) GetYields(ctx context.Context, locationId, cultureId i
 func (r *YieldRepository) CreateYields(ctx context.Context, locationId, cultureId int, fromDate, toDate time.Time, yields []models.Yield) error {
 	var err error
 	var fields []influx.Field
+	//var sb strings.Builder
+
 	var tags []influx.Tag = []influx.Tag{
 		{"location_id", strconv.FormatInt(int64(locationId), 10)},
 		{"culture_id", strconv.FormatInt(int64(cultureId), 10)},
@@ -79,9 +81,12 @@ func (r *YieldRepository) CreateYields(ctx context.Context, locationId, cultureI
 	}
 	for _, yield := range yields {
 		fields = append(fields, influx.Field{strconv.FormatInt(int64(yield.Year), 10), yield.Yield})
+		//TODO
+		//zapisat kao ;;;;;
 	}
 
 	p := influxdb2.NewPointWithMeasurement("simulation")
+
 	for _, tag := range tags {
 		p = p.AddTag(tag.Key, tag.Value)
 	}

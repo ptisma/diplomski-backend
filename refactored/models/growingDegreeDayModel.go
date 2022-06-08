@@ -1,6 +1,6 @@
 package models
 
 type GrowingDegreeDay struct {
-	Date  string
-	Value float32
+	Date  string  `json:"date"`
+	Value float32 `json:"value"`
 }
