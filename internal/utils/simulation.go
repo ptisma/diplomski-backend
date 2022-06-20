@@ -2,7 +2,6 @@ package utils
 
 import (
 	"apsim-api/internal/models"
-	"apsim-api/pkg/application"
 	"fmt"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -15,13 +14,13 @@ func RunAPSIMSimulation(absPathApsimx string) error {
 
 	cmd := exec.Command("dotnet", "apsim.dll", "run", "--single-threaded", "f", absPathApsimx)
 	//sad sam u apsimu
-	cmd.Dir = "../apsim-cli/netcoreapp3.1"
+	cmd.Dir = "./apsim-cli"
 	err := cmd.Run()
 
 	return err
 }
 
-func ReadAPSIMSimulationResults(dbFilePath string, app *application.Application) ([]models.Yield, error) {
+func ReadAPSIMSimulationResults(dbFilePath string) ([]models.Yield, error) {
 
 	var yields = []models.Yield{}
 	fmt.Println("Opening db file:", dbFilePath)
@@ -30,7 +29,17 @@ func ReadAPSIMSimulationResults(dbFilePath string, app *application.Application)
 		return yields, err
 	}
 	err = db.Raw(`SELECT strftime('%Y', date) as year, max(yield) as yield FROM report GROUP BY year`).Scan(&yields).Error
-	fmt.Println("yields:", yields)
+
+	//for _, j := range yields {
+	//	err = db.Raw(`SELECT date FROM report`).Scan(&yields).Error
+	//	j.Dates =
+	//
+	//}
+	//fmt.Println("yields:", yields)
+
+	client, _ := db.DB()
+	//not handled
+	client.Close()
 
 	return yields, err
 

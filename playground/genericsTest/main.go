@@ -25,4 +25,6 @@ func main() {
 
 	ch := make(chan models.MicroclimateReading, 2)
 
+	agnosticRec(ch)
+
 }

@@ -16,7 +16,7 @@ func main() {
 	// Get query client
 	queryAPI := client.QueryAPI(org)
 	//Set query string
-	queryStr := `from(bucket:"apsim")
+	queryStr := `from(bucket:"apsim-stage-area")
 				|> range(start: 0)
 				|> filter(fn: (r) => r._measurement == "simulation" and r["location_id"] == "1" and r["culture_id"] == "1" and r["from"] == "2000" and r["to"] == "2002")
                 |> sort(columns: ["_time"], desc: true)
@@ -64,19 +64,19 @@ func main() {
 }
 
 /*
-from(bucket:"apsim")
+from(bucket:"apsim-stage-area")
 				|> range(start: 0)
                 |> last()
 				|> group(columns: ["from", "to"])
 				|> filter(fn: (r) => r._measurement == "simulation" and r["location_id"] == "1" and r["culture_id"] == "1")
 
 
-from(bucket:"apsim")
+from(bucket:"apsim-stage-area")
 				|> range(start: -500h)
 				|> group(columns: ["from", "to"])
 				|> filter(fn: (r) => r._measurement == "simulation" and r["location_id"] == "1" and r["culture_id"] == "1")
 
-from(bucket:"apsim")
+from(bucket:"apsim-stage-area")
 				|> range(start: 0)
 				|> filter(fn: (r) => r._measurement == "simulation" and r["location_id"] == "1" and r["culture_id"] == "1")
                 |> group()
@@ -86,7 +86,7 @@ from(bucket:"apsim")
                 |> group()
 
 //works
-from(bucket:"apsim")
+from(bucket:"apsim-stage-area")
 				|> range(start: 0)
 				|> filter(fn: (r) => r._measurement == "simulation" and r["location_id"] == "1" and r["culture_id"] == "1" and r["from"] == "2000" and r["to"] == "2002")
                 |> sort(columns: ["_time"], desc: true)

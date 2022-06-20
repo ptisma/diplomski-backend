@@ -1,14 +1,14 @@
 package main
 
 import (
-	"apsim-api/refactored/models"
+	"apsim-api/internal/models"
 	"fmt"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
 func main() {
-	dbFilePath := "C:\\Users\\gulas\\Desktop\\faks\\peta\\diplomski\\backend\\apsim-api\\apsim\\apsimxFile3064893327.db"
+	dbFilePath := "C:\\Users\\gulas\\Desktop\\faks\\peta\\diplomski\\backend\\apsim-stage-area-api\\apsim-stage-area\\apsimxFile3064893327.db"
 	var yields = []models.Yield{}
 	fmt.Println("Opening db file:", dbFilePath)
 	db, err := gorm.Open(sqlite.Open(dbFilePath), &gorm.Config{})

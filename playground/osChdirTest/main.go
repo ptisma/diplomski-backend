@@ -14,7 +14,7 @@ func main() {
 	os.Chdir(".")
 	fmt.Println(os.Getwd())
 
-	os.Chdir("./apsim")
+	os.Chdir("./apsim-stage-area")
 	fmt.Println(os.Getwd())
 
 	os.Chdir(".")
@@ -2901,6 +2901,6 @@ func main() {
 	//}
 
 	for {
-		
+
 	}
 }

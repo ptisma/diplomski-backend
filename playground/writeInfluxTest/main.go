@@ -9,7 +9,7 @@ import (
 func main() {
 	//Petar
 	//Sifra123
-	bucket := "apsim"
+	bucket := "apsim-stage-area"
 	org := "FER"
 	token := "iCIavmWDn08-O9C5R4qjR2xrWN-57YluKNJY6HW6NCBEKPXMy_AdwwFmIi0k5TDWKRdkT6f2P4Wpe4QhVOJExQ=="
 	// Store the URL of your InfluxDB instance
