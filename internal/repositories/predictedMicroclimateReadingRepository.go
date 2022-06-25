@@ -1,14 +1,16 @@
 package repositories
 
 import (
+	"apsim-api/internal/infra/db"
 	"apsim-api/internal/models"
 	"context"
-	"gorm.io/gorm"
 	"time"
 )
 
+//same workflow as microclimateRepository
 type PredictedMicroclimateReadingRepository struct {
-	DB *gorm.DB
+	//DB *gorm.DB
+	DB db.DB
 }
 
 func (r *PredictedMicroclimateReadingRepository) GetMicroClimateReadings(ctx context.Context, microclimateID, locationID int, fromDate, toDate time.Time) ([]models.PredictedMicroclimateReading, error) {
@@ -18,10 +20,10 @@ func (r *PredictedMicroclimateReadingRepository) GetMicroClimateReadings(ctx con
 	queryStr := "microclimate_id = ? AND location_id = ? AND date <= ? AND date >= ?"
 
 	//err = r.DB.WithContext(ctx).Debug().Preload("Location").Model(&models.PredictedMicroclimateReading{}).Preload("Microclimate").Where(queryStr, microclimateID, locationID, toDate.Format("2006-01-02"), fromDate.Format("2006-01-02")).Group("microclimate_id,location_id,date").Order("date").Find(&microclimates).Error
-	err = r.DB.WithContext(ctx).Debug().Preload("Location").Model(&models.PredictedMicroclimateReading{}).Preload("Microclimate").Where(queryStr, microclimateID, locationID, toDate.Format("2006-01-02"), fromDate.Format("2006-01-02")).Order("date").Find(&microclimates).Error
-	//if err != nil {
-	//	return []models.PredictedMicroclimateReading{}, err
-	//}
+	err = r.DB.GetClient().WithContext(ctx).Debug().Preload("Location").Model(&models.PredictedMicroclimateReading{}).Preload("Microclimate").Where(queryStr, microclimateID, locationID, toDate.Format("2006-01-02"), fromDate.Format("2006-01-02")).Order("date").Find(&microclimates).Error
+	if err != nil {
+		return nil, err
+	}
 	return microclimates, err
 
 }
@@ -32,8 +34,10 @@ func (r *PredictedMicroclimateReadingRepository) GetLatestMicroClimateReadingByI
 	microclimateReading := models.PredictedMicroclimateReading{}
 	queryStr := "location_id = ? AND microclimate_ID = ?"
 
-	err = r.DB.WithContext(ctx).Debug().Preload("Location").Model(&models.PredictedMicroclimateReading{}).Preload("Microclimate").Where(queryStr, locationID, microclimateID).Order("date desc").First(&microclimateReading).Error
-
+	err = r.DB.GetClient().WithContext(ctx).Debug().Preload("Location").Model(&models.PredictedMicroclimateReading{}).Preload("Microclimate").Where(queryStr, locationID, microclimateID).Order("date desc").First(&microclimateReading).Error
+	if err != nil {
+		return models.PredictedMicroclimateReading{}, err
+	}
 	return microclimateReading, err
 }
 
@@ -43,31 +47,16 @@ func (r *PredictedMicroclimateReadingRepository) GetLatestMicroClimateReading(ct
 	microclimateReading := models.PredictedMicroclimateReading{}
 	queryStr := "location_id = ?"
 
-	err = r.DB.WithContext(ctx).Debug().Preload("Location").Model(&models.PredictedMicroclimateReading{}).Preload("Microclimate").Where(queryStr, locationID).Order("date desc").First(&microclimateReading).Error
-
+	err = r.DB.GetClient().WithContext(ctx).Debug().Preload("Location").Model(&models.PredictedMicroclimateReading{}).Preload("Microclimate").Where(queryStr, locationID).Order("date desc").First(&microclimateReading).Error
+	if err != nil {
+		return models.PredictedMicroclimateReading{}, err
+	}
 	return microclimateReading, err
 }
 
 func (r *PredictedMicroclimateReadingRepository) GetBatchMicroclimateReading(locationID int, fromDate, toDate time.Time, ch chan models.PredictedMicroclimateReading, ctxx context.Context) error {
-
+	defer close(ch)
 	results := []models.PredictedMicroclimateReading{}
-
-	//result := r.DB.Debug().WithContext(ctxx).Where("location_id = ? AND date >= ? AND date <= ?", locationID, fromDate.Format("2006-01-02"), toDate.Format("2006-01-02")).FindInBatches(&results, 100, func(tx *gorm.DB, batch int) error {
-	//	for _, result := range results {
-	//		//cancel()
-	//		//fmt.Println("result:", result)
-	//		select {
-	//		case ch <- result:
-	//			//fmt.Println("Poslao")
-	//		case <-ctxx.Done():
-	//			fmt.Println("ctx batch predicted microclimate reading", ctxx.Err())
-	//			//close(ch)
-	//			return ctxx.Err()
-	//		}
-	//	}
-	//
-	//	return nil
-	//}).Error
 	//result := r.DB.Debug().WithContext(ctxx).Where("location_id = ? AND date >= ? AND date <= ?", locationID, fromDate.Format("2006-01-02"), toDate.Format("2006-01-02")).Order("date, microclimate_id").FindInBatches(&results, 100, func(tx *gorm.DB, batch int) error {
 	//	for _, result := range results {
 	//		//cancel()
@@ -96,7 +85,7 @@ func (r *PredictedMicroclimateReadingRepository) GetBatchMicroclimateReading(loc
 	)
 	for {
 		results = nil
-		result := r.DB.Limit(batchSize).Offset(batch*batchSize).Where("location_id = ? AND date >= ? AND date <= ?", locationID, fromDate.Format("2006-01-02"), toDate.Format("2006-01-02")).Order("date, microclimate_id").Find(&results)
+		result := r.DB.GetClient().Limit(batchSize).Offset(batch*batchSize).Where("location_id = ? AND date >= ? AND date <= ?", locationID, fromDate.Format("2006-01-02"), toDate.Format("2006-01-02")).Order("date, microclimate_id").Find(&results)
 		rowsAffected += result.RowsAffected
 		batch++
 
@@ -112,6 +101,7 @@ func (r *PredictedMicroclimateReadingRepository) GetBatchMicroclimateReading(loc
 					//fmt.Println("ctx batch microclimate", ctxx.Err())
 					//close(ch)
 					return ctxx.Err()
+
 				}
 			}
 
@@ -126,8 +116,6 @@ func (r *PredictedMicroclimateReadingRepository) GetBatchMicroclimateReading(loc
 		}
 
 	}
-
-	close(ch)
 
 	return err
 }

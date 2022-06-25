@@ -11,7 +11,6 @@ type MicroclimateService struct {
 }
 
 func (s *MicroclimateService) GetAllMicroclimates(ctx context.Context) ([]models.Microclimate, error) {
-	//fmt.Println("Sad sam u servisu")
 	return s.I.GetAllMicroclimates(ctx)
 }
 

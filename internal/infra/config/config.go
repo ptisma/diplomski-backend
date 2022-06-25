@@ -22,13 +22,13 @@ type cfg struct {
 	//dbHost         string
 	//dbPort         string
 	//dbName         string
-	apiURL         string
-	apiPort        string
-	influxDbUrl    string
-	influxDbToken  string
-	influxDbBucket string
-	influxDbOrg    string
-	measurement    string
+	apiURL              string
+	apiPort             string
+	influxDbUrl         string
+	influxDbToken       string
+	influxDbBucket      string
+	influxDbOrg         string
+	influxDbMeasurement string
 }
 
 func (c *cfg) GetDBConnectionString() string {
@@ -54,7 +54,7 @@ func (c *cfg) GetInfluxDbOrg() string {
 	return c.influxDbOrg
 }
 func (c *cfg) GetInfluxDbMeasurement() string {
-	return c.measurement
+	return c.influxDbMeasurement
 }
 
 func GetConfig() Config {
@@ -70,7 +70,7 @@ func GetConfig() Config {
 	flag.StringVar(&conf.influxDbToken, "influxdtoken", os.Getenv("INFLUX_DB_TOKEN"), "Influx DB token")
 	flag.StringVar(&conf.influxDbBucket, "influxdbbucket", os.Getenv("INFLUX_DB_BUCKET"), "Influx DB bucket")
 	flag.StringVar(&conf.influxDbOrg, "influxdborg", os.Getenv("INFLUX_DB_ORG"), "Influx DB org")
-	flag.StringVar(&conf.influxDbOrg, "influxdbmeasurement", os.Getenv("INFLUX_DB_MEASUREMENT"), "Influx DB measurement")
+	flag.StringVar(&conf.influxDbMeasurement, "influxdbmeasurement", os.Getenv("INFLUX_DB_MEASUREMENT"), "Influx DB Measurement")
 	return conf
 
 }

@@ -6,7 +6,8 @@ import (
 	"apsim-api/internal/utils"
 	"context"
 	"errors"
-	"fmt"
+	"log"
+	"os"
 	"time"
 )
 
@@ -15,7 +16,6 @@ type CultureService struct {
 }
 
 func (s *CultureService) FetchAllCultures(ctx context.Context) ([]models.Culture, error) {
-	//fmt.Println("Sad sam u servisu")
 	return s.GetAllCultures(ctx)
 }
 
@@ -23,13 +23,23 @@ func (s *CultureService) FetchCultureById(ctx context.Context, id int) (models.C
 	return s.GetCultureById(ctx, id)
 }
 
-func (s *CultureService) GenerateAPSIMXFile(cultureId int, fromDate, toDate time.Time, soil models.Soil, ch chan models.Message, mainCh chan models.Message, ctx context.Context) error {
+// Generate .apsimxfile in stage area
+// Send to the main chan the absolute path of generated file
+// Receive from secondary chan the absolute paths of other files which are coming from concurent goroutines creating their own files
+func (s *CultureService) GenerateAPSIMXFile(cultureId int, fromDate, toDate time.Time, soil models.Soil, ch chan utils.Message, mainCh chan utils.Message, ctx context.Context) error {
 	var err error
+	var apsimxFile *os.File
+
+	//clean up function
+	//close file so it can be deleted
+	//log error
+	//TODO instead of printing err, make error processing component which stores errors from all goroutines
 	defer func() {
-		fmt.Println("APSIMX ending")
+		log.Println("APSIMX ending")
+		_ = apsimxFile.Close()
 		//Because err group only logs one first error from whole group
 		if err != nil {
-			fmt.Println("GenerateAPSIMXFile err:", err)
+			log.Println("GenerateAPSIMXFile err:", err)
 
 		}
 	}()
@@ -37,8 +47,8 @@ func (s *CultureService) GenerateAPSIMXFile(cultureId int, fromDate, toDate time
 	if err != nil {
 		return err
 	}
-	mainCh <- models.Message{
-		ID:      models.APSIMX_FILE_CODE,
+	mainCh <- utils.Message{
+		ID:      utils.APSIMX_FILE_CODE,
 		Payload: apsimxFileAbs,
 	}
 	//fmt.Println("apsimxFile abs path:", apsimxFileAbs)
@@ -46,9 +56,10 @@ func (s *CultureService) GenerateAPSIMXFile(cultureId int, fromDate, toDate time
 	counter := 0
 	flag := false
 	for {
+		//blocking
 		select {
 		case msg := <-ch:
-			fmt.Println(msg)
+			//fmt.Println(msg)
 			switch msg.ID {
 			case 0:
 				constsFilePath = msg.Payload
@@ -61,11 +72,12 @@ func (s *CultureService) GenerateAPSIMXFile(cultureId int, fromDate, toDate time
 			default:
 				return errors.New("Received unexpected message")
 			}
-		//not sure if this is correct to place here and return that
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
 			if counter == 2 {
+				//TODO cleanup work for secondary chan, receiver closing chan if others are all over?
+				close(ch)
 				flag = true
 				break
 			}
@@ -83,10 +95,6 @@ func (s *CultureService) GenerateAPSIMXFile(cultureId int, fromDate, toDate time
 		return err
 	}
 
-	_ = apsimxFile.Close()
 	//can simulation run without apsimx file being closed(it can)
-	//	cancel()
-	//	return err
-	//}
 	return err
 }

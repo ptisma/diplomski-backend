@@ -29,8 +29,8 @@ func (b *bg) GetLocationService() interfaces.ILocationService {
 
 func NewBackgroundWorker(app application.Application) BackgroundWorker {
 	return &bg{
-		I1: &services.MicroclimateReadingService{&repositories.MicroclimateReadingRepository{app.GetDB().GetClient()}, &repositories.PredictedMicroclimateReadingRepository{app.GetDB().GetClient()}},
-		I2: &services.LocationService{&repositories.LocationRepository{app.GetDB().GetClient()}},
+		I1: &services.MicroclimateReadingService{&repositories.MicroclimateReadingRepository{app.GetDB()}, &repositories.PredictedMicroclimateReadingRepository{app.GetDB()}},
+		I2: &services.LocationService{&repositories.LocationRepository{app.GetDB()}},
 	}
 
 }

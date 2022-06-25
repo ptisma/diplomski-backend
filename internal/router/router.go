@@ -12,14 +12,14 @@ type IMuxRouter interface {
 	InitRouter() *mux.Router
 }
 
-//router kernel function
+//router helper kernel function
 type rkernel struct {
 	app application.Application
 }
 
 func (r *rkernel) InitRouter() *mux.Router {
 
-	//get a singleton instance of service container
+	//get a Singleton instance of service container
 	serviceContainer := serviceContainer.GetServiceContainer(r.app)
 
 	//controllers
@@ -40,11 +40,10 @@ func (r *rkernel) InitRouter() *mux.Router {
 	locationRouter := mux.PathPrefix("/location/{locationId}").Subrouter()
 	locationRouter.Use(middlewares.LocationMiddleware)
 	cultureRouter := locationRouter.PathPrefix("/culture/{cultureId}").Subrouter()
-	cultureRouter.Use(middlewares.CultureMiddleware)
+	cultureRouter.Use(middlewares.CultureMiddleware, middlewares.DatesMiddleware)
 	microclimateRouter := locationRouter.PathPrefix("/microclimate/{microclimateId}").Subrouter()
-	microclimateRouter.Use(middlewares.MicroclimateMiddleware)
-
-	//nested endpoints
+	microclimateRouter.Use(middlewares.MicroclimateMiddleware, middlewares.DatesMiddleware)
+	//endpoints
 	locationRouter.HandleFunc("/microclimate/all/period", microclimateReadingController.GetMicroclimateReadingPeriod).Methods("GET")
 	microclimateRouter.HandleFunc("", microclimateReadingController.GetMicroclimateReadings).Methods("GET")
 	cultureRouter.HandleFunc("/yield", yieldController.GetYield).Methods("GET")
@@ -54,6 +53,7 @@ func (r *rkernel) InitRouter() *mux.Router {
 
 }
 
+// Singleton
 var (
 	m          *rkernel
 	routerOnce sync.Once

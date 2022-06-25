@@ -2,12 +2,12 @@ package controllers
 
 import (
 	"apsim-api/internal/interfaces"
-	"apsim-api/internal/models"
 	"apsim-api/internal/utils"
 	"context"
 	"encoding/json"
 	"fmt"
 	"golang.org/x/sync/errgroup"
+	"log"
 	"net/http"
 	"time"
 )
@@ -22,28 +22,15 @@ type YieldController struct {
 
 func (c *YieldController) GetYield(w http.ResponseWriter, r *http.Request) {
 
-	ctx, _ := context.WithTimeout(r.Context(), 20*time.Second)
+	ctx, _ := context.WithTimeout(r.Context(), 31*time.Second)
 
 	//Retrieving locationId and cultureID from middlewares
 	locationId, _ := r.Context().Value("locationId").(uint64)
 	cultureId, _ := r.Context().Value("cultureId").(uint64)
+	fromDate, _ := r.Context().Value("from").(time.Time)
+	toDate, _ := r.Context().Value("to").(time.Time)
 
-	//Parsing URL params
-	urlParams := r.URL.Query()
-	//parse direct into string YYYY-MM-DD
-	fromDate, err := time.Parse("20060102", urlParams.Get("from"))
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "Error in parsing: fromDate is not in YYYYMMDD format")
-		return
-	}
-	toDate, err := time.Parse("20060102", urlParams.Get("to"))
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "Error in parsing: toDate is not in YYYYMMDD format")
-		return
-	}
-	fmt.Println("locationId:", locationId, "cultureId:", cultureId, "fromDate:", fromDate, "toDate:", toDate)
+	//log.Println("locationId:", locationId, "cultureId:", cultureId, "fromDate:", fromDate, "toDate:", toDate)
 
 	location, err := c.LocationService.GetLocationById(ctx, int(locationId))
 	if err != nil {
@@ -51,7 +38,7 @@ func (c *YieldController) GetYield(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Error in fetching location: locationId doesn't exist")
 		return
 	}
-	//fmt.Println("Location:", location)
+	//log.Println("Location:", location)
 
 	latestMicroclimateReading, err := c.MicroclimateReadingService.GetLatestMicroClimateReading(ctx, int(locationId))
 	if err != nil {
@@ -59,7 +46,7 @@ func (c *YieldController) GetYield(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Error in fetching: latest microclimate reading")
 		return
 	}
-	//fmt.Println("latest microclimate reading", latestMicroclimateReading)
+	//log.Println("latest microclimate reading", latestMicroclimateReading)
 
 	lastTime, err := time.Parse("2006-01-02", latestMicroclimateReading.Date)
 	if err != nil {
@@ -67,7 +54,7 @@ func (c *YieldController) GetYield(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Error in parsing: latest microclimate reading date")
 		return
 	}
-	//fmt.Println("lastTime", lastTime)
+	//log.Println("lastTime", lastTime)
 
 	soil, err := c.SoilService.GetSoilByLocationId(ctx, int(locationId))
 	if err != nil {
@@ -75,108 +62,125 @@ func (c *YieldController) GetYield(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Error in fetching soil: soil doesn't exist for given locationID %d", locationId)
 		return
 	}
-	//fmt.Println("Soil:", soil)
+	//log.Println("Soil:", soil)
 
-	fmt.Println("Checking cache")
+	log.Println("Checking cache")
 
 	yields, err := c.YieldService.GetYields(ctx, int(locationId), int(cultureId), fromDate, toDate)
 	//remove nil in yield service
 	if err == nil && yields != nil {
 		if c.YieldService.ValidateYields(fromDate, toDate, yields) == true {
-			fmt.Println("Found cached results in InfluxDB")
+			log.Println("Found cached results in InfluxDB")
 			w.Header().Set("Content-Type", "application/json")
 			response, _ := json.Marshal(&yields)
 			w.Write(response)
 			return
 		}
 	} else {
-		fmt.Println("Error reading from influx db", err)
+		log.Println("Error reading from influx db", err)
 	}
-	fmt.Println("Did not found cached results in InfluxDB")
-	fmt.Println("Starting work")
+	log.Println("Did not found cached results in InfluxDB")
+	log.Println("Starting work")
 	//ctx, _ := context.WithTimeout(context.Background(), 20*time.Second)
 	//Prepare goroutines, each for one file(apsimx, csv and consts)
-	g, ctx := errgroup.WithContext(ctx)
+	g, ctxx := errgroup.WithContext(ctx)
 	//Make a buffered channel for shared communication because apsimx goroutine needs the filepaths of other two files
 	//ID = 0 for CSV and ID = 1 for Consts file
+	//chans closed in goroutines, move here?
+	ch := make(chan utils.Message, 2)
+	mainCh := make(chan utils.Message, 3)
 
-	ch := make(chan models.Message, 2)
-	mainCh := make(chan models.Message, 3)
+	var csvAbsPath, constsAbsPath, apsimxAbsPath, dbAbsPath string
+	var debug bool //if error in running simulation dont delete .db file
+	defer func() {
+		//Cleanup function which cleans only after this point
+		//clean up work deleting, not handled
+		log.Println("Deleting stage files")
+		utils.DeleteStageFile(csvAbsPath)
+		utils.DeleteStageFile(constsAbsPath)
+		utils.DeleteStageFile(apsimxAbsPath)
+		if debug == false {
+			utils.DeleteStageFile(dbAbsPath) //commented for now due to debugging reasons
+		}
+
+	}()
 
 	g.Go(func() error {
-		return c.LocationService.GenerateConstsFile(location.Name, location.Latitude, location.Longitude, ch, mainCh, ctx)
+		return c.LocationService.GenerateConstsFile(location.Name, location.Latitude, location.Longitude, ch, mainCh, ctxx)
 	})
 
 	//Create a apsimx file, fetch the
 	g.Go(func() error {
-		return c.CultureService.GenerateAPSIMXFile(int(cultureId), fromDate, toDate, soil, ch, mainCh, ctx)
+		return c.CultureService.GenerateAPSIMXFile(int(cultureId), fromDate, toDate, soil, ch, mainCh, ctxx)
 	})
 
 	//Create a CSV file
 	g.Go(func() error {
-		return c.MicroclimateReadingService.GenerateCSVFile(int(locationId), fromDate, toDate, lastTime, ch, mainCh, ctx)
+		return c.MicroclimateReadingService.GenerateCSVFile(int(locationId), fromDate, toDate, lastTime, ch, mainCh, ctxx)
 	})
-
-	fmt.Println("Waiting for workers to finish")
+	log.Println("Waiting for workers to finish")
 	err = g.Wait()
-	//fmt.Println("errgroup error", err) //prints done
-	fmt.Println("Workers done, closing channel")
-	close(ch)
+	//log.Println("Workers done, closing channel")
+	//close(ch)
+
+	csvAbsPath, constsAbsPath, apsimxAbsPath = utils.GetStageFilesAbsPaths(mainCh)
+	log.Println("absolute paths of generated files:", csvAbsPath, constsAbsPath, apsimxAbsPath)
 	if err != nil {
-		fmt.Println("errGroup error:", err)
-		fmt.Println("Finishing")
-		//return message json
+		log.Println("errGroup error:", err)
+		log.Println("Finishing")
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "Error in generating files for simulation")
 		return
 	}
-	//fmt.Println("Continue work")
+	//log.Println("Continue work")
 
-	csvAbsPath, constsAbsPath, apsimxAbsPath := utils.GetStageFilesAbsPaths(mainCh)
+	log.Println("Starting simulation")
+	err = utils.RunAPSIMSimulation(ctx, apsimxAbsPath)
 
-	fmt.Println("absolute paths of generated files:", csvAbsPath, constsAbsPath, apsimxAbsPath)
+	//Disregarding the outcome of simulation the .db file will be created
+	dbAbsPath = utils.ConstructDBAbsPath(apsimxAbsPath)
+	log.Println("dbAbsPath:", dbAbsPath)
 
-	fmt.Println("Starting simulation")
-	err = utils.RunAPSIMSimulation(apsimxAbsPath)
 	if err != nil {
-		fmt.Println(err)
+		//log.Println(err)
+		errLogs, err := c.YieldService.ReadYieldErrors(dbAbsPath)
+		if err != nil {
+			log.Println(err)
+		}
+		for index, message := range errLogs {
+			log.Printf("Error %d: %s\n", index, message)
+		}
+		debug = true
+
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "Error in running simulation, pick a different from & to")
 		return
 	}
 
-	dbAbsPath := utils.ConstructDBAbsPath(apsimxAbsPath)
-	fmt.Println("dbAbsPath:", dbAbsPath)
-
-	yields, err = utils.ReadAPSIMSimulationResults(dbAbsPath)
+	yields, err = c.YieldService.ReadYields(dbAbsPath)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "Error in parsing db yield results")
 		return
 	}
 
 	if c.YieldService.ValidateYields(fromDate, toDate, yields) == false {
-		fmt.Println(err)
+		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "Error in fetching db yield results")
 		return
 	}
 
-	fmt.Println("yields:", yields)
+	//log.Println("yields:", yields)
 
 	w.Header().Set("Content-Type", "application/json")
-	response, _ := json.Marshal(yields)
+	response, _ := json.Marshal(&yields)
 	w.Write(response)
 
 	err = c.YieldService.CreateYields(ctx, int(locationId), int(cultureId), fromDate, toDate, yields)
 	if err != nil {
-		fmt.Println("Error writing in influx db", err)
+		log.Println("Error writing in influx db", err)
 	}
-
-	//deleting, not handled
-	//utils.DeleteStageFile(csvAbsPath)
-	//utils.DeleteStageFile(constsAbsPath)
-	//utils.DeleteStageFile(apsimxAbsPath)
-	//utils.DeleteStageFile(dbAbsPath)
-
-	fmt.Println("Ended")
+	log.Println("Ended")
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm"
+	"log"
 	"os"
 	"strings"
 	"time"
@@ -19,12 +20,14 @@ type MicroclimateReadingService struct {
 	I2 interfaces.IPredictedMicroclimateReadingRepository
 }
 
+//Get min and max date for the location id
+//Since every date has 6 microclimate parameters, we dont "need" to check for microclimate id
 func (s *MicroclimateReadingService) GetMicroclimateReadingPeriod(ctx context.Context, microclimateID, locationID int) (models.Period, error) {
 	period := models.Period{}
 	firstMicroclimateReading, err := s.I1.GetFirstMicroClimateReading(ctx, locationID)
 	//firstMicroclimateReading, err := s.I1.GetFirstMicroClimateReadingByID(ctx, microclimateID, locationID)
 	if err != nil {
-		return period, err
+		return models.Period{}, err
 	}
 
 	period.Min = firstMicroclimateReading.Date
@@ -37,7 +40,7 @@ func (s *MicroclimateReadingService) GetMicroclimateReadingPeriod(ctx context.Co
 			lastMicroclimateReading, err := s.I1.GetLatestMicroClimateReading(ctx, locationID)
 			//lastMicroclimateReading, err := s.I1.GetLatestMicroClimateReadingByID(ctx, microclimateID, locationID)
 			if err != nil {
-				return period, err
+				return models.Period{}, err
 			}
 			period.Max = lastMicroclimateReading.Date
 			return period, err
@@ -51,7 +54,8 @@ func (s *MicroclimateReadingService) GetMicroclimateReadingPeriod(ctx context.Co
 
 }
 
-func (s *MicroclimateReadingService) CalculateGrowingDegreeDay(ctx context.Context, tmaxReadings []models.MicroclimateReading, tminReadings []models.MicroclimateReading, baseTemp float32) ([]models.GrowingDegreeDay, error) {
+//calculate GDD
+func (s *MicroclimateReadingService) CalculateGrowingDegreeDay(tmaxReadings []models.MicroclimateReading, tminReadings []models.MicroclimateReading, baseTemp float32) ([]models.GrowingDegreeDay, error) {
 	var err error
 	var gdds = []models.GrowingDegreeDay{}
 
@@ -69,12 +73,15 @@ func (s *MicroclimateReadingService) CalculateGrowingDegreeDay(ctx context.Conte
 		}
 	} else {
 		err = errors.Errorf("tmax and tmin readings are not equal")
+		return nil, err
 	}
 
 	return gdds, err
 }
 
-func (s *MicroclimateReadingService) CalculatePredictedGrowingDegreeDay(ctx context.Context, tmaxReadings []models.PredictedMicroclimateReading, tminReadings []models.PredictedMicroclimateReading, baseTemp float32) ([]models.GrowingDegreeDay, error) {
+//calculate predicted GDD
+//convert predicted microclimate readings to microclimate readings
+func (s *MicroclimateReadingService) CalculatePredictedGrowingDegreeDay(tmaxReadings []models.PredictedMicroclimateReading, tminReadings []models.PredictedMicroclimateReading, baseTemp float32) ([]models.GrowingDegreeDay, error) {
 	//var err error
 	//var gdds = []models.GrowingDegreeDay{}
 	//
@@ -95,57 +102,54 @@ func (s *MicroclimateReadingService) CalculatePredictedGrowingDegreeDay(ctx cont
 	//
 	//return gdds, err
 
-	return s.CalculateGrowingDegreeDay(ctx, s.ConvertPredictedMicroclimateReadings(tmaxReadings), s.ConvertPredictedMicroclimateReadings(tminReadings), baseTemp)
+	return s.CalculateGrowingDegreeDay(s.ConvertPredictedMicroclimateReadings(tmaxReadings), s.ConvertPredictedMicroclimateReadings(tminReadings), baseTemp)
 }
 
 func (s *MicroclimateReadingService) CreateMicroclimateReading(ctx context.Context, microclimateID, locationID int, date string, value float32) error {
-	//fmt.Println("Sad sam u servisu")
 	return s.I1.CreateMicroclimateReading(ctx, microclimateID, locationID, date, value)
 }
 
 func (s *MicroclimateReadingService) CreateMicroclimateReadings(ctx context.Context, microclimateReadings []models.MicroclimateReading) error {
-	//fmt.Println("Sad sam u servisu")
 	return s.I1.CreateMicroclimateReadings(ctx, microclimateReadings)
 }
 
 func (s *MicroclimateReadingService) GetMicroclimateReadings(ctx context.Context, microclimateID, locationID int, fromDate, toDate time.Time) ([]models.MicroclimateReading, error) {
-	//fmt.Println("Sad sam u servisu")
 	return s.I1.GetMicroClimateReadings(ctx, microclimateID, locationID, fromDate, toDate)
 }
 
 func (s *MicroclimateReadingService) GetPredictedMicroclimateReadings(ctx context.Context, microclimateID, locationID int, fromDate, toDate time.Time) ([]models.PredictedMicroclimateReading, error) {
-	//fmt.Println("Sad sam u servisu")
 	return s.I2.GetMicroClimateReadings(ctx, microclimateID, locationID, fromDate, toDate)
 }
 
 func (s *MicroclimateReadingService) GetLatestMicroClimateReading(ctx context.Context, locationID int) (models.MicroclimateReading, error) {
-	//fmt.Println("Sad sam u servisu")
-	//preassumption is that all microclimate reading parameters are in database so we check just latest
+	//presumption is that all microclimate reading parameters are in database so we check just latest
 	return s.I1.GetLatestMicroClimateReading(ctx, locationID)
 }
 
+//Runs in goroutine
 func (s *MicroclimateReadingService) GetBatchMicroclimateReadings(locationID int, fromDate, toDate time.Time, ch chan models.MicroclimateReading, ctxx context.Context) error {
 	var err error
 	defer func() {
-		fmt.Println("GetBatchMicroclimateReadings ending")
+		log.Println("GetBatchMicroclimateReadings ending")
 		//Because err group only logs one first error from whole group
 		if err != nil {
-			fmt.Println("GetBatchMicroclimateReadings", err)
+			log.Println("GetBatchMicroclimateReadings", err)
 
 		}
 	}()
 	err = s.I1.GetBatchMicroclimateReading(locationID, fromDate, toDate, ch, ctxx)
-
 	return err
 }
 
+//Runs in goroutine
+//Fetch readings from DB and send them to chan
 func (s *MicroclimateReadingService) GetBatchPredictedMicroclimateReadings(locationID int, fromDate, toDate time.Time, ch chan models.PredictedMicroclimateReading, ctxx context.Context) error {
 	var err error
 	defer func() {
-		fmt.Println("GetBatchPredictedMicroclimateReadings ending")
+		log.Println("GetBatchPredictedMicroclimateReadings ending")
 		//Because err group only logs one first error from whole group
 		if err != nil {
-			fmt.Println("GetBatchPredictedMicroclimateReadings err:", err)
+			log.Println("GetBatchPredictedMicroclimateReadings err:", err)
 
 		}
 	}()
@@ -153,7 +157,6 @@ func (s *MicroclimateReadingService) GetBatchPredictedMicroclimateReadings(locat
 	return err
 }
 
-//TODO Code duplication
 func (s *MicroclimateReadingService) ReceiveFromPredictedBatchAndWrite(csvFile *os.File, batchCh chan models.PredictedMicroclimateReading, ctxx context.Context) error {
 	var err error
 	defer func() {
@@ -221,14 +224,16 @@ func (s *MicroclimateReadingService) ReceiveFromPredictedBatchAndWrite(csvFile *
 	}
 }
 
+//Runs in goroutine
+//Receive readings from chan and write to file
 func (s *MicroclimateReadingService) ReceiveFromBatchAndWrite(csvFile *os.File, batchCh chan models.MicroclimateReading, ctxx context.Context) error {
 	var err error
 
 	defer func() {
-		fmt.Println("ReceiveFromBatchAndWrite ending")
+		log.Println("ReceiveFromBatchAndWrite ending")
 		//Because err group only logs one first error from whole group
 		if err != nil {
-			fmt.Println("ReceiveFromBatchAndWrite err:", err)
+			log.Println("ReceiveFromBatchAndWrite err:", err)
 
 		}
 	}()
@@ -292,10 +297,15 @@ func (s *MicroclimateReadingService) ReceiveFromBatchAndWrite(csvFile *os.File, 
 	}
 }
 
-func (s *MicroclimateReadingService) GenerateCSVFile(locationId int, fromDate, toDate, lastDate time.Time, ch chan models.Message, mainCh chan models.Message, ctx context.Context) error {
+//Generate CSV file in stage area
+func (s *MicroclimateReadingService) GenerateCSVFile(locationId int, fromDate, toDate, lastDate time.Time, ch chan utils.Message, mainCh chan utils.Message, ctx context.Context) error {
 	var err error
+	var csvFileOrig, csvFile *os.File
 	defer func() {
 		fmt.Println("CSV ending")
+		_ = csvFileOrig.Close()
+
+		_ = csvFile.Close()
 		//Because err group only logs one error
 		if err != nil {
 			fmt.Println("GenerateCSVFile err:", err)
@@ -307,13 +317,13 @@ func (s *MicroclimateReadingService) GenerateCSVFile(locationId int, fromDate, t
 	if err != nil {
 		return err
 	}
-	ch <- models.Message{ID: models.CSV_FILE_CODE, Payload: csvFileAbs}
-	mainCh <- models.Message{ID: models.CSV_FILE_CODE, Payload: csvFileAbs}
+	ch <- utils.Message{ID: utils.CSV_FILE_CODE, Payload: csvFileAbs}
+	mainCh <- utils.Message{ID: utils.CSV_FILE_CODE, Payload: csvFileAbs}
 
 	fmt.Println("CSVFile abs path:", csvFileAbs)
 
 	//append
-	csvFile, err := os.OpenFile(csvFileAbs, os.O_APPEND|os.O_WRONLY, 0644)
+	csvFile, err = os.OpenFile(csvFileAbs, os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
@@ -325,7 +335,7 @@ func (s *MicroclimateReadingService) GenerateCSVFile(locationId int, fromDate, t
 
 	//launch a batch getter in separate goroutine
 	g, ctxx := errgroup.WithContext(ctx)
-	batchCh := make(chan models.MicroclimateReading, 50)
+	batchCh := make(chan models.MicroclimateReading, 200)
 	//endCh := make(chan string, 1)
 	//buff := []models.MicroclimateReading{}
 	//counter := 0
@@ -374,14 +384,12 @@ func (s *MicroclimateReadingService) GenerateCSVFile(locationId int, fromDate, t
 			return err
 		}
 	}
-	_ = csvFileOrig.Close()
-
-	_ = csvFile.Close()
 
 	return err
 
 }
 
+//helper function to convert PredictedMicroclimateReading to MicroclimateReading
 func (s *MicroclimateReadingService) ConvertPredictedMicroclimateReadings(predictedMicroclimateReadings []models.PredictedMicroclimateReading) []models.MicroclimateReading {
 	mr := make([]models.MicroclimateReading, 0, len(predictedMicroclimateReadings))
 	for _, j := range predictedMicroclimateReadings {
@@ -393,9 +401,26 @@ func (s *MicroclimateReadingService) ConvertPredictedMicroclimateReadings(predic
 			Location:       j.Location,
 			Date:           j.Date,
 			Value:          j.Value,
-			FromDate:       j.FromDate,
-			ToDate:         j.ToDate,
 		})
 	}
 	return mr
+}
+
+//helper function to validate microclimate readings if they fit the interval
+func (s *MicroclimateReadingService) ValidateMicroclimateReadings(fromDate, toDate time.Time, microclimateReadings []models.MicroclimateReading) bool {
+	difference := toDate.Sub(fromDate)
+	if len(microclimateReadings) != int(difference.Hours()/24)+1 {
+		return false
+	}
+	return true
+}
+
+//helper function to validate growing degree days if they fit the interval
+func (s *MicroclimateReadingService) ValidateGrowingDegreeDays(fromDate, toDate time.Time, gdds []models.GrowingDegreeDay) bool {
+	difference := toDate.Sub(fromDate)
+
+	if len(gdds) != int(difference.Hours()/24)+1 {
+		return false
+	}
+	return true
 }

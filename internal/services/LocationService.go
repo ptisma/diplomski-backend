@@ -6,6 +6,7 @@ import (
 	"apsim-api/internal/utils"
 	"context"
 	"fmt"
+	"log"
 	"os"
 )
 
@@ -14,7 +15,6 @@ type LocationService struct {
 }
 
 func (s *LocationService) GetAllLocations(ctx context.Context) ([]models.Location, error) {
-	//fmt.Println("Sad sam u servisu")
 	return s.I.GetAllLocations(ctx)
 }
 
@@ -22,51 +22,50 @@ func (r *LocationService) GetLocationById(ctx context.Context, locationId int) (
 	return r.I.GetLocationById(ctx, locationId)
 }
 
-func (r *LocationService) GenerateConstsFile(locationName string, locationLatitude, locationLongitude float32, ch chan models.Message, mainCh chan models.Message, ctxx context.Context) error {
+// Generate consts file in stage area
+// Send to the main chan the absolute path of generated file
+// Send to the secondary chan the absolute path of generated file
+func (r *LocationService) GenerateConstsFile(locationName string, locationLatitude, locationLongitude float32, ch chan utils.Message, mainCh chan utils.Message, ctxx context.Context) error {
 
 	var err error
+	var constsFile, constsFileA *os.File
+
+	//clean up function
+	//close file so it can be deleted
+	//log error
 	defer func() {
-		fmt.Println("CONSTS ending")
+		log.Println("CONSTS ending")
+
+		_ = constsFileA.Close()
+		_ = constsFile.Close()
+
 		//Because err group only logs one error
 		if err != nil {
-			fmt.Println("GenerateConstsFile err:", err)
+			log.Println("GenerateConstsFile err:", err)
 
 		}
 	}()
 
+	//Create a consts text file
 	constsFile, constsFileAbs, err := utils.CreateTempStageFile("const*.txt")
 	if err != nil {
 		return err
 	}
-	ch <- models.Message{ID: models.CONSTS_FILE_CODE, Payload: constsFileAbs}
-	mainCh <- models.Message{ID: models.CONSTS_FILE_CODE, Payload: constsFileAbs}
-	//if err != nil {
-	//	return err
-	//}
-	//fmt.Println("constsFile abs path:", constsFileAbs)
-	//Write into consts file
-	constsFileA, err := os.OpenFile(constsFileAbs, os.O_APPEND|os.O_WRONLY, 0644)
+	ch <- utils.Message{ID: utils.CONSTS_FILE_CODE, Payload: constsFileAbs}
+	mainCh <- utils.Message{ID: utils.CONSTS_FILE_CODE, Payload: constsFileAbs}
+
+	//Appending to file
+	constsFileA, err = os.OpenFile(constsFileAbs, os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
 	//Write into consts file
+	//no context method in standard library (byte by byte with select block checking context if there is a huge text)
 	_, err = constsFileA.WriteString(fmt.Sprintf("location = %s\nlatitude = %.2f (DECIMAL DEGREES)\nlongitude = %.2f (DECIMAL DEGREES)\n", locationName, locationLatitude, locationLongitude))
 	if err != nil {
 		return err
 	}
-	//err = constsFileA.Close()
-	//if err != nil {
-	//	return err
-	//}
-	//err = constsFile.Close()
-	//if err != nil {
-	//	return err
-	//}
 
-	_ = constsFileA.Close()
-	_ = constsFile.Close()
 	return err
-
-	//close .apsimx file?
 
 }

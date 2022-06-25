@@ -20,58 +20,63 @@ func main() {
 
 	//Load env vars
 	if err := godotenv.Load(); err != nil {
-		fmt.Println("failed to load env vars")
+		log.Println("failed to load env vars")
 	}
 
+	//load wrapper application struct
 	app, err := application.GetApplication()
 	if err != nil {
-		fmt.Println(err.Error())
+		log.Println(err.Error())
 		return
 	}
 
-	//srvConnStr := fmt.Sprintf("%s:%s", app.GetConfig().GetApiURL(), app.GetConfig().GetApiPort())
+	//Set up a conn str and wrapper server struct
 	srvConnStr := fmt.Sprintf(":%s", app.GetConfig().GetApiPort())
 	srv := server.GetServer().WithAddr(srvConnStr).WithRouter(router.GetMuxRouter(app).InitRouter())
 
 	//background := backgroundContainer.NewBackground(app)
 
-	//new
+	//Set up a wrapper struct with services
 	backgroundWorker := backgroundContainer.NewBackgroundWorker(app)
 	//ctx := context.Background()
 	ctx, cancel := context.WithCancel(context.Background())
-	scheduler := backgroundContainer.NewScheduler(ctx, backgroundWorker)
+	//set up a background container struct which schedules all the background works where the background worker with services is used
+	scheduler := backgroundContainer.GetBackgroundContainer(ctx, backgroundWorker)
 
-	//Handle terminal shutdown
+	//Handle from terminal shutdown
 	c := make(chan os.Signal)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 
+	//Start HTTP server
 	go func() {
 		//Start the work
-		//err = srv.Start()
-		//fmt.Println("HTTP server", err)
 		if err := srv.Start(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("HTTP server listen: %s\n", err)
 		}
 	}()
-	//scheduler.ScheduleBackgroundWorks()
+	//Run background works
+	scheduler.ScheduleBackgroundWorks()
 	//Wait terminal shutdown
 	sig := <-c
-	fmt.Printf("Caught SIGTERM %b, gracefully shutting down resources", sig)
+	log.Printf("Caught SIGTERM %b, gracefully shutting down resources\n", sig)
+	//Graceful shutdown of background works
 	cancel()
 	scheduler.Exit()
 	//shutdown HTTP server
 	ctxx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	//Cleanup work
 	defer func() {
 		//extra handling here
 		//shutdown DB sqlite
 		err = app.GetDB().Close()
-		fmt.Println("Shutting down DB, value:", err)
+		log.Println("Shutting down DB, value:", err)
 		//shutdown cache InfluxDB
 		err = app.GetCache().Close()
-		fmt.Println("Shutting down InfluxDB, value:", err)
+		log.Println("Shutting down InfluxDB, value:", err)
 		cancel()
 
 	}()
+	//Graceful shutdown of HTTP server
 	if err := srv.Close(ctxx); err != nil {
 		log.Fatalf("Server Shutdown Failed:%+v", err)
 	}

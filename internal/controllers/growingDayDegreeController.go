@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 )
@@ -20,39 +21,43 @@ func (c *GrowingDegreeDayController) GetGrowingDegreeDays(w http.ResponseWriter,
 	//Retrieving locationId and cultureID from middlewares
 	locationId, _ := r.Context().Value("locationId").(uint64)
 	cultureId, _ := r.Context().Value("cultureId").(uint64)
+	fromDate, _ := r.Context().Value("from").(time.Time)
+	toDate, _ := r.Context().Value("to").(time.Time)
 
 	//currentDate := time.Now().Format("20060102")
-	//fmt.Println("Current date:", currentDate)
+	//log.Println("Current date:", currentDate)
 
-	//Parsing URL params
-	urlParams := r.URL.Query()
-	//parse direct into string YYYY-MM-DD
-	fromDate, err := time.Parse("20060102", urlParams.Get("from"))
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "Error in parsing: fromDate is not in YYYYMMDD format")
-		return
-	}
-	toDate, err := time.Parse("20060102", urlParams.Get("to"))
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "Error in parsing: toDate is not in YYYYMMDD format")
-		return
-	}
-	fmt.Println("locationId:", locationId, "cultureId:", cultureId, "fromDate:", fromDate, "toDate:", toDate)
+	////Parsing URL params
+	//urlParams := r.URL.Query()
+	////parse direct into string YYYY-MM-DD
+	//fromDate, err := time.Parse("20060102", urlParams.Get("from"))
+	//if err != nil {
+	//	w.WriteHeader(http.StatusInternalServerError)
+	//	fmt.Fprintf(w, "Error in parsing: fromDate is not in YYYYMMDD format")
+	//	return
+	//}
+	//toDate, err := time.Parse("20060102", urlParams.Get("to"))
+	//if err != nil {
+	//	w.WriteHeader(http.StatusInternalServerError)
+	//	fmt.Fprintf(w, "Error in parsing: toDate is not in YYYYMMDD format")
+	//	return
+	//}
+	//log.Println("locationId:", locationId, "cultureId:", cultureId, "fromDate:", fromDate, "toDate:", toDate)
 
 	ctx, _ := context.WithTimeout(r.Context(), 5*time.Second)
 
 	culture, err := c.CultureService.FetchCultureById(ctx, int(cultureId))
 	if err != nil {
+		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "Error in fetching: culture")
 		return
 	}
-	fmt.Println("Fetched culture", culture)
+	//log.Println("Fetched culture", culture)
 
 	tmax, err := c.MicroclimateService.GetMicroclimateByName(ctx, "tmax")
 	if err != nil {
+		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "Error in fetching: tmax microclimate")
 		return
@@ -60,58 +65,49 @@ func (c *GrowingDegreeDayController) GetGrowingDegreeDays(w http.ResponseWriter,
 
 	tmin, err := c.MicroclimateService.GetMicroclimateByName(ctx, "tmin")
 	if err != nil {
+		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "Error in fetching: tmin microclimate readings")
 		return
 	}
-	//tmax := models.Microclimate{Name: "tmax"}
-	//tmax.GetMicroclimateByName(app)
-	//fmt.Println("tmax:", tmax)
-	//fmt.Println("tmin:", tmin)
+
+	//log.Println("tmax:", tmax)
+	//log.Println("tmin:", tmin)
 
 	x, err := c.MicroclimateReadingService.GetMicroclimateReadings(ctx, int(tmax.ID), int(locationId), fromDate, toDate)
 	if err != nil {
+		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "Error in fetching: tmax microclimate readings")
 		return
 	}
-	fmt.Println("x:", x)
-
-	//
-	//tmin := models.Microclimate{Name: "tmin"}
-	//tmin.GetMicroclimateByName(app)
-
-	//
-	//microclimateReading = models.MicroclimateReading{
-	//	MicroclimateID: tmin.ID,
-	//	LocationID:     uint32(locationId),
-	//	FromDate:       fromDate,
-	//	ToDate:         toDate,
-	//}
+	//log.Println("x:", x)
 
 	y, err := c.MicroclimateReadingService.GetMicroclimateReadings(ctx, int(tmin.ID), int(locationId), fromDate, toDate)
 	if err != nil {
+		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "Error in fetching: tmin microclimate readings")
 		return
 	}
-	fmt.Println("y:", y)
+	//log.Println("y:", y)
 
-	gdds, err := c.MicroclimateReadingService.CalculateGrowingDegreeDay(ctx, x, y, culture.BaseTemperature)
+	gdds, err := c.MicroclimateReadingService.CalculateGrowingDegreeDay(x, y, culture.BaseTemperature)
 	if err != nil {
+		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "Error in calculating: history growing degree days")
 		return
 	}
-	fmt.Println("gdds:", gdds)
-	//err = microclimateReading.GetLatestMicroclimateReading(app)
+	//log.Println("gdds:", gdds)
+
 	latestMicroclimateReading, err := c.MicroclimateReadingService.GetLatestMicroClimateReading(ctx, int(locationId))
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "Error in fetching: latest microclimate reading")
 		return
 	}
-	fmt.Println("latest microclimate reading", latestMicroclimateReading)
+	//log.Println("latest microclimate reading", latestMicroclimateReading)
 	lastDate, err := time.Parse("2006-01-02", latestMicroclimateReading.Date)
 
 	if err != nil {
@@ -129,73 +125,40 @@ func (c *GrowingDegreeDayController) GetGrowingDegreeDays(w http.ResponseWriter,
 		}
 		x, err := c.MicroclimateReadingService.GetPredictedMicroclimateReadings(ctx, int(tmax.ID), int(locationId), newFromDate, toDate)
 		if err != nil {
+			log.Println(err)
 			w.WriteHeader(http.StatusInternalServerError)
 			fmt.Fprintf(w, "Error in fetching: tmax predicted microclimate readings")
 			return
 		}
 
-		fmt.Println("predicted x:", x)
+		//log.Println("predicted x:", x)
 
 		y, err := c.MicroclimateReadingService.GetPredictedMicroclimateReadings(ctx, int(tmin.ID), int(locationId), newFromDate, toDate)
 		if err != nil {
+			log.Println(err)
 			w.WriteHeader(http.StatusInternalServerError)
 			fmt.Fprintf(w, "Error in fetching: tmin predicted microclimate readings")
 			return
 		}
 
-		fmt.Println("predicted y:", y)
+		//log.Println("predicted y:", y)
 
-		predictedGdds, err := c.MicroclimateReadingService.CalculatePredictedGrowingDegreeDay(ctx, x, y, culture.BaseTemperature)
+		predictedGdds, err := c.MicroclimateReadingService.CalculatePredictedGrowingDegreeDay(x, y, culture.BaseTemperature)
 		if err != nil {
+			log.Println(err)
 			w.WriteHeader(http.StatusInternalServerError)
 			fmt.Fprintf(w, "Error in calculating: predicted growing degree days")
 			return
 		}
-		fmt.Println("predictedGdds:", predictedGdds)
+		log.Println("predictedGdds:", predictedGdds)
 		gdds = append(gdds, predictedGdds...)
 
-		//microclimateReading := models.PredictedMicroclimateReading{
-		//	MicroclimateID: tmax.ID,
-		//	LocationID:     uint32(locationId),
-		//	FromDate:       fromDate,
-		//	ToDate:         toDate,
-		//}
-		//x, err := microclimateReading.GetPredictedMicroclimateReading(app)
-		//if err != nil {
-		//	w.WriteHeader(http.StatusInternalServerError)
-		//	fmt.Fprintf(w, "Error in fetching: tmax predicted microclimate readings")
-		//	return
-		//}
-		//fmt.Println("predicted x:", x)
-		//
-		//microclimateReading = models.PredictedMicroclimateReading{
-		//	MicroclimateID: tmin.ID,
-		//	LocationID:     uint32(locationId),
-		//	FromDate:       fromDate,
-		//	ToDate:         toDate,
-		//}
-		//y, err := microclimateReading.GetPredictedMicroclimateReading(app)
-		//if err != nil {
-		//	w.WriteHeader(http.StatusInternalServerError)
-		//	fmt.Fprintf(w, "Error in fetching: tmin predicted microclimate readings")
-		//	return
-		//}
-		//fmt.Println("predicted y:", y)
-		//
-		//if len(*x) == len(*y) {
-		//	for i, _ := range *x {
-		//
-		//		date := (*x)[i].Date
-		//		gdd := ((*x)[i].Value+(*y)[i].Value)/2 - float32(culture.BaseTemperature)
-		//
-		//		gdds = append(gdds, models.GrowingDegreeDay{
-		//			Date:  date,
-		//			Value: gdd,
-		//		})
-		//
-		//	}
-		//}
+	}
 
+	if c.MicroclimateReadingService.ValidateGrowingDegreeDays(fromDate, toDate, gdds) == false {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "Error in fetching growing degree days, wrong dates")
+		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	response, _ := json.Marshal(&gdds)

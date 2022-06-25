@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 )
@@ -22,11 +23,11 @@ func (c *MicroclimateReadingController) GetMicroclimateReadingPeriod(w http.Resp
 	microclimateId, _ := r.Context().Value("microclimateId").(uint64)
 
 	period, err := c.I.GetMicroclimateReadingPeriod(ctx, int(microclimateId), int(locationId))
-	fmt.Println("period:", period)
+	//log.Println("period:", period)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "Error in fetching: microclimate readings")
+		fmt.Fprintf(w, "Error in fetching: microclimate readings period")
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -41,31 +42,18 @@ func (c *MicroclimateReadingController) GetMicroclimateReadings(w http.ResponseW
 
 	locationId, _ := r.Context().Value("locationId").(uint64)
 	microclimateId, _ := r.Context().Value("microclimateId").(uint64)
+	fromDate, _ := r.Context().Value("from").(time.Time)
+	toDate, _ := r.Context().Value("to").(time.Time)
 
-	//Parsing URL params
-	urlParams := r.URL.Query()
-	//parse direct into string YYYY-MM-DD
-	fromDate, err := time.Parse("20060102", urlParams.Get("from"))
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "Error in parsing: fromDate is not in YYYYMMDD format")
-		return
-	}
-	toDate, err := time.Parse("20060102", urlParams.Get("to"))
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "Error in parsing: toDate is not in YYYYMMDD format")
-		return
-	}
-	fmt.Println("locationId:", locationId, "microclimateId:", microclimateId, "fromDate:", fromDate, "toDate:", toDate)
+	//log.Println("locationId:", locationId, "microclimateId:", microclimateId, "fromDate:", fromDate, "toDate:", toDate)
 
 	microclimateReadings, err := c.I.GetMicroclimateReadings(ctx, int(microclimateId), int(locationId), fromDate, toDate)
-	if err != nil {
+	if err != nil || len(microclimateReadings) == 0 {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "Error in fetching: microclimate readings")
 		return
 	}
-	fmt.Println("microclimateReadings:", microclimateReadings)
+	//log.Println("microclimateReadings:", microclimateReadings)
 
 	latestMicroclimateReading, err := c.I.GetLatestMicroClimateReading(ctx, int(locationId))
 	if err != nil {
@@ -73,7 +61,7 @@ func (c *MicroclimateReadingController) GetMicroclimateReadings(w http.ResponseW
 		fmt.Fprintf(w, "Error in fetching: latest microclimate reading")
 		return
 	}
-	fmt.Println("latest microclimate reading", latestMicroclimateReading)
+	//log.Println("latest microclimate reading", latestMicroclimateReading)
 
 	lastDate, err := time.Parse("2006-01-02", latestMicroclimateReading.Date)
 
@@ -82,11 +70,10 @@ func (c *MicroclimateReadingController) GetMicroclimateReadings(w http.ResponseW
 		fmt.Fprintf(w, "Error in parsing: latest microclimate reading date")
 		return
 	}
-	fmt.Println("lastDate:", lastDate)
+	//log.Println("lastDate:", lastDate)
 
 	if toDate.After(lastDate) {
-
-		fmt.Println("Have to fetch predicted")
+		log.Println("Have to fetch predicted")
 		var newFromDate time.Time
 		if fromDate.After(lastDate) {
 			newFromDate = fromDate
@@ -95,15 +82,21 @@ func (c *MicroclimateReadingController) GetMicroclimateReadings(w http.ResponseW
 		}
 
 		preadings, err := c.I.GetPredictedMicroclimateReadings(ctx, int(microclimateId), int(locationId), newFromDate, toDate)
-		if err != nil {
+		if err != nil || len(preadings) == 0 {
 			w.WriteHeader(http.StatusInternalServerError)
 			fmt.Fprintf(w, "Error in fetching: predicted microclimate readings")
 			return
 		}
 		cpreadings := c.I.ConvertPredictedMicroclimateReadings(preadings)
-		fmt.Println("cpreadings:", cpreadings)
+		//log.Println("cpreadings:", cpreadings)
 		microclimateReadings = append(microclimateReadings, cpreadings...)
 
+	}
+
+	if c.I.ValidateMicroclimateReadings(fromDate, toDate, microclimateReadings) == false {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "Error in fetching microclimate readings, wrong dates")
+		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	response, _ := json.Marshal(&microclimateReadings)

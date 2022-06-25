@@ -17,10 +17,12 @@ type IServiceContainer interface {
 	InjectGrowingDegreeDayController() controllers.GrowingDegreeDayController
 }
 
+//service helper kernel function
 type skernel struct {
 	app application.Application
 }
 
+//Injecting Controllers with needed interfaces
 func (k *skernel) InjectCultureController() controllers.CultureController {
 
 	//db, _ := gorm.Open(sqlite.Open("C:\\Users\\gulas\\Desktop\\faks\\peta\\diplomski\\backend\\apsim-stage-area-api\\baza.db"), &gorm.Config{})
@@ -29,8 +31,7 @@ func (k *skernel) InjectCultureController() controllers.CultureController {
 	//if err != nil {
 	//	return controllers.CultureController{}, err
 	//}
-
-	cultureRepository := &repositories.CultureRepository{DB: k.app.GetDB().GetClient()}
+	cultureRepository := &repositories.CultureRepository{DB: k.app.GetDB()}
 
 	cultureService := &services.CultureService{cultureRepository}
 
@@ -48,7 +49,7 @@ func (k *skernel) InjectLocationController() controllers.LocationController {
 	//	return controllers.CultureController{}, err
 	//}
 
-	locationRepository := &repositories.LocationRepository{DB: k.app.GetDB().GetClient()}
+	locationRepository := &repositories.LocationRepository{DB: k.app.GetDB()}
 
 	locationService := &services.LocationService{locationRepository}
 
@@ -66,7 +67,7 @@ func (k *skernel) InjectMicroclimateController() controllers.MicroclimateControl
 	//	return controllers.CultureController{}, err
 	//}
 
-	microclimateRepository := &repositories.MicroclimateRepository{DB: k.app.GetDB().GetClient()}
+	microclimateRepository := &repositories.MicroclimateRepository{DB: k.app.GetDB()}
 
 	microclimateService := &services.MicroclimateService{microclimateRepository}
 
@@ -84,8 +85,8 @@ func (k *skernel) InjectMicroclimateReadingController() controllers.Microclimate
 	//	return controllers.CultureController{}, err
 	//}
 
-	microclimateReadingRepository := &repositories.MicroclimateReadingRepository{DB: k.app.GetDB().GetClient()}
-	predictedMicroclimateReadingRepository := &repositories.PredictedMicroclimateReadingRepository{DB: k.app.GetDB().GetClient()}
+	microclimateReadingRepository := &repositories.MicroclimateReadingRepository{DB: k.app.GetDB()}
+	predictedMicroclimateReadingRepository := &repositories.PredictedMicroclimateReadingRepository{DB: k.app.GetDB()}
 
 	microclimateReadingService := &services.MicroclimateReadingService{microclimateReadingRepository, predictedMicroclimateReadingRepository}
 
@@ -101,7 +102,7 @@ func (k *skernel) InjectYieldController() controllers.YieldController {
 	//client := influxdb2.NewClient("http://localhost:8086", "iCIavmWDn08-O9C5R4qjR2xrWN-57YluKNJY6HW6NCBEKPXMy_AdwwFmIi0k5TDWKRdkT6f2P4Wpe4QhVOJExQ==")
 
 	yieldRepository := &repositories.YieldRepository{
-		Client:      k.app.GetCache().GetClient(),
+		DB:          k.app.GetCache(),
 		Org:         k.app.GetConfig().GetInfluxDbOrg(),
 		Bucket:      k.app.GetConfig().GetInfluxDbBucket(),
 		Measurement: k.app.GetConfig().GetInfluxDbMeasurement(),
@@ -109,20 +110,20 @@ func (k *skernel) InjectYieldController() controllers.YieldController {
 
 	yieldService := &services.YieldService{yieldRepository}
 
-	soilRepository := &repositories.SoilRepository{DB: k.app.GetDB().GetClient()}
+	soilRepository := &repositories.SoilRepository{DB: k.app.GetDB()}
 
 	soilService := &services.SoilService{soilRepository}
 
-	cultureRepository := &repositories.CultureRepository{DB: k.app.GetDB().GetClient()}
+	cultureRepository := &repositories.CultureRepository{DB: k.app.GetDB()}
 
 	cultureService := &services.CultureService{cultureRepository}
 
-	locationRepository := &repositories.LocationRepository{DB: k.app.GetDB().GetClient()}
+	locationRepository := &repositories.LocationRepository{DB: k.app.GetDB()}
 
 	locationService := &services.LocationService{locationRepository}
 
-	microclimateReadingRepository := &repositories.MicroclimateReadingRepository{DB: k.app.GetDB().GetClient()}
-	predictedMicroclimateReadingRepository := &repositories.PredictedMicroclimateReadingRepository{DB: k.app.GetDB().GetClient()}
+	microclimateReadingRepository := &repositories.MicroclimateReadingRepository{DB: k.app.GetDB()}
+	predictedMicroclimateReadingRepository := &repositories.PredictedMicroclimateReadingRepository{DB: k.app.GetDB()}
 
 	microclimateReadingService := &services.MicroclimateReadingService{microclimateReadingRepository, predictedMicroclimateReadingRepository}
 
@@ -149,15 +150,15 @@ func (k *skernel) InjectGrowingDegreeDayController() controllers.GrowingDegreeDa
 	//if err != nil {
 	//	return controllers.CultureController{}, err
 	//}
-	cultureRepository := &repositories.CultureRepository{DB: k.app.GetDB().GetClient()}
+	cultureRepository := &repositories.CultureRepository{DB: k.app.GetDB()}
 
 	cultureService := &services.CultureService{cultureRepository}
 
-	microclimateReadingRepository := &repositories.MicroclimateReadingRepository{DB: k.app.GetDB().GetClient()}
-	predictedMicroclimateReadingRepository := &repositories.PredictedMicroclimateReadingRepository{DB: k.app.GetDB().GetClient()}
+	microclimateReadingRepository := &repositories.MicroclimateReadingRepository{DB: k.app.GetDB()}
+	predictedMicroclimateReadingRepository := &repositories.PredictedMicroclimateReadingRepository{DB: k.app.GetDB()}
 
 	microclimateReadingService := &services.MicroclimateReadingService{microclimateReadingRepository, predictedMicroclimateReadingRepository}
-	microclimateRepository := &repositories.MicroclimateRepository{DB: k.app.GetDB().GetClient()}
+	microclimateRepository := &repositories.MicroclimateRepository{DB: k.app.GetDB()}
 
 	microclimateService := &services.MicroclimateService{microclimateRepository}
 
@@ -166,6 +167,7 @@ func (k *skernel) InjectGrowingDegreeDayController() controllers.GrowingDegreeDa
 	return growingDegreeDayController
 }
 
+//Singleton
 var (
 	k             *skernel
 	containerOnce sync.Once

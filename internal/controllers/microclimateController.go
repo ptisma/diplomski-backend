@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 )
@@ -16,7 +17,8 @@ type MicroclimateController struct {
 func (c *MicroclimateController) GetMicroclimates(w http.ResponseWriter, r *http.Request) {
 	ctx, _ := context.WithTimeout(r.Context(), 5*time.Second)
 	microclimates, err := c.GetAllMicroclimates(ctx)
-	if err != nil {
+	if err != nil || len(microclimates) == 0 {
+		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "Error in fetching microclimate parameters")
 		return

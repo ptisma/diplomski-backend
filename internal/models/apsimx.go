@@ -7,6 +7,7 @@ import (
 	"time"
 )
 
+//hardcoded JSON string blueprint for Barley
 var Barley = `{
   "$type": "Models.Core.Simulations, Models",
   "ExplorerWidth": 300,
@@ -292,7 +293,7 @@ var Barley = `{
   "ReadOnly": false
 }`
 
-//TODO
+//hardcoded JSON string blueprint for Maize
 var Maize = `{
   "$type": "Models.Core.Simulations, Models",
   "ExplorerWidth": 300,
@@ -575,7 +576,7 @@ var InitiateAPSIMCulture = map[int]GenerateAPSIMCulture{
 	2: NewMaizeApsimx,
 }
 
-//CSV
+//Inject arguments into Barley blueprint
 func NewBarleyApsimx(start, end time.Time, csvFilePath, constFilePath string, soilData string) string {
 
 	if runtime.GOOS == "windows" {
@@ -583,8 +584,8 @@ func NewBarleyApsimx(start, end time.Time, csvFilePath, constFilePath string, so
 		constFilePath = strings.Replace(constFilePath, "\\", "\\\\", -1)
 
 	}
-	fmt.Println("csvFilePath:", csvFilePath)
-	fmt.Println("constFilePath:", constFilePath)
+	//fmt.Println("csvFilePath:", csvFilePath)
+	//fmt.Println("constFilePath:", constFilePath)
 
 	//same format as apsimx example file
 	res := fmt.Sprintf(Barley, start.Format("2006-01-02T15:04:05"), end.Format("2006-01-02T15:04:05"), constFilePath, csvFilePath, soilData)
@@ -592,6 +593,7 @@ func NewBarleyApsimx(start, end time.Time, csvFilePath, constFilePath string, so
 
 }
 
+//Inject arguments into Maize blueprint
 func NewMaizeApsimx(start, end time.Time, csvFilePath, constFilePath string, soilData string) string {
 
 	if runtime.GOOS == "windows" {
@@ -599,8 +601,8 @@ func NewMaizeApsimx(start, end time.Time, csvFilePath, constFilePath string, soi
 		constFilePath = strings.Replace(constFilePath, "\\", "\\\\", -1)
 
 	}
-	fmt.Println("csvFilePath:", csvFilePath)
-	fmt.Println("constFilePath:", constFilePath)
+	//fmt.Println("csvFilePath:", csvFilePath)
+	//fmt.Println("constFilePath:", constFilePath)
 
 	//same format as apsimx example file
 	res := fmt.Sprintf(Maize, start.Format("2006-01-02T15:04:05"), end.Format("2006-01-02T15:04:05"), constFilePath, csvFilePath, soilData)

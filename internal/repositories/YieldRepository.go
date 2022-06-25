@@ -11,16 +11,27 @@ import (
 )
 
 type YieldRepository struct {
-	Client      influxdb2.Client
+	//Client      influxdb2.Client
+	DB          db.Cache
 	Org         string
 	Bucket      string
 	Measurement string
 }
 
+//type val struct {
+//	value float32
+//	dates []string
+//}
+
+//Fetch all yields based on starting, ending date, culture id and location id
 func (r *YieldRepository) GetYields(ctx context.Context, locationId, cultureId int, fromDate, toDate time.Time) ([]models.Yield, error) {
 	var yields = []models.Yield{}
 	var err error
 
+	//flux query
+	//filter based on arguments returns tables with records (every pair of field and value with their tags in each new table)
+	//sort works on each table, get the latest one with first
+	//use group to flat out to single table
 	fluxQueryStr := fmt.Sprintf(`from(bucket:"%s")
 			|> range(start: 0)
 			|> filter(fn: (r) => r._measurement == "%s" and r["location_id"] == "%d" and r["culture_id"] == "%d" and r["from"] == "%d" and r["to"] == "%d")
@@ -30,7 +41,7 @@ func (r *YieldRepository) GetYields(ctx context.Context, locationId, cultureId i
 	       `, r.Bucket, r.Measurement, locationId, cultureId, fromDate.Year(), toDate.Year())
 	//fmt.Println(fluxQueryStr)
 
-	queryAPI := r.Client.QueryAPI(r.Org)
+	queryAPI := r.DB.GetClient().QueryAPI(r.Org)
 	resultIterator, err := queryAPI.Query(ctx, fluxQueryStr)
 	//flag := true
 	if err == nil {
@@ -38,7 +49,7 @@ func (r *YieldRepository) GetYields(ctx context.Context, locationId, cultureId i
 		for resultIterator.Next() {
 
 			// Access data
-			fmt.Printf("field: %s, value: %v\n", resultIterator.Record().Field(), resultIterator.Record().Value())
+			//fmt.Printf("field: %s, value: %v\n", resultIterator.Record().Field(), resultIterator.Record().Value())
 			year := resultIterator.Record().Field()
 			yearInt, err := strconv.ParseInt(year, 10, 32)
 			if err != nil {
@@ -47,6 +58,7 @@ func (r *YieldRepository) GetYields(ctx context.Context, locationId, cultureId i
 				//break
 				return nil, err
 			}
+			//its interface{} so we have to type insert
 			yieldFloat, ok := resultIterator.Record().Value().(float64)
 			if !ok {
 				//flag = false
@@ -54,6 +66,16 @@ func (r *YieldRepository) GetYields(ctx context.Context, locationId, cultureId i
 				//break
 				return nil, err
 			}
+			//x := result.Record().Value()
+			////fmt.Println(x)
+			//obj, _ := x.(string)
+			//target := val{}
+			//json.Unmarshal([]byte(obj), &target)
+			//yields = append(yields, models.Yield{
+			//	Year:  int32(yearInt),
+			//	Yield: target.Value,
+			//	Dates: target.Dates,
+			//})
 			yields = append(yields, models.Yield{Year: int32(yearInt), Yield: float32(yieldFloat)})
 		}
 		// Check for an error
@@ -62,32 +84,36 @@ func (r *YieldRepository) GetYields(ctx context.Context, locationId, cultureId i
 			//fmt.Printf("query parsing error: %s\n", resultIterator.Err().Error())
 			return nil, resultIterator.Err()
 		}
-	} else {
-		fmt.Println(err)
 	}
 
 	return yields, err
 }
 
+//Create yields based on starting, ending date, culture id and location id
 func (r *YieldRepository) CreateYields(ctx context.Context, locationId, cultureId int, fromDate, toDate time.Time, yields []models.Yield) error {
-	ctx = context.Background()
 	var err error
 	var fields []db.Field
 	//var sb strings.Builder
-	var tags []db.Tag = []db.Tag{
+	//Create tags
+	var tags = []db.Tag{
 		{"location_id", strconv.FormatInt(int64(locationId), 10)},
 		{"culture_id", strconv.FormatInt(int64(cultureId), 10)},
 		{"from", strconv.FormatInt(int64(fromDate.Year()), 10)},
 		{"to", strconv.FormatInt(int64(toDate.Year()), 10)},
 	}
+	//Create pairs of field and value
 	for _, yield := range yields {
+		//v := val{
+		//	value: yield.Yield,
+		//	dates: yield.Dates,
+		//}
+		//z, _ := json.Marshal(v)
 		fields = append(fields, db.Field{strconv.FormatInt(int64(yield.Year), 10), yield.Yield})
-		//TODO
-		//zapisat dates odnosno slice kao jedan veliki string odvojen "," kod yielda
 	}
 
+	//Point is a timestamped data
 	p := influxdb2.NewPointWithMeasurement(r.Measurement)
-
+	//add tags and pairs of field and value
 	for _, tag := range tags {
 		p = p.AddTag(tag.Key, tag.Value)
 	}
@@ -95,7 +121,8 @@ func (r *YieldRepository) CreateYields(ctx context.Context, locationId, cultureI
 		p = p.AddField(field.Key, field.Value)
 	}
 
-	writeAPI := r.Client.WriteAPIBlocking(r.Org, r.Bucket)
+	//store the simulation results as point
+	writeAPI := r.DB.GetClient().WriteAPIBlocking(r.Org, r.Bucket)
 	err = writeAPI.WritePoint(ctx, p)
 
 	return err

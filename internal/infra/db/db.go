@@ -27,6 +27,7 @@ func (d *database) Close() error {
 }
 
 func GetDB(connStr string) (DB, error) {
+	var err error
 	db, err := gorm.Open(sqlite.Open(connStr), &gorm.Config{})
 
 	if err != nil {
@@ -34,5 +35,5 @@ func GetDB(connStr string) (DB, error) {
 	}
 	return &database{
 		Client: db,
-	}, nil
+	}, err
 }

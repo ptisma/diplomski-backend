@@ -2,6 +2,7 @@ package interfaces
 
 import (
 	"apsim-api/internal/models"
+	"apsim-api/internal/utils"
 	"context"
 	"os"
 	"time"
@@ -18,7 +19,7 @@ type IMicroclimateReadingService interface {
 
 	GetBatchMicroclimateReadings(locationID int, fromDate, toDate time.Time, ch chan models.MicroclimateReading, ctxx context.Context) error
 
-	GenerateCSVFile(locationId int, fromDate, toDate, lastDate time.Time, ch chan models.Message, mainCh chan models.Message, ctx context.Context) error
+	GenerateCSVFile(locationId int, fromDate, toDate, lastDate time.Time, ch chan utils.Message, mainCh chan utils.Message, ctx context.Context) error
 
 	ReceiveFromBatchAndWrite(csvFile *os.File, batchCh chan models.MicroclimateReading, ctxx context.Context) error
 
@@ -26,9 +27,13 @@ type IMicroclimateReadingService interface {
 
 	CreateMicroclimateReadings(ctx context.Context, microclimateReadings []models.MicroclimateReading) error
 
-	CalculateGrowingDegreeDay(ctx context.Context, tmaxReadings []models.MicroclimateReading, tminReadings []models.MicroclimateReading, baseTemp float32) ([]models.GrowingDegreeDay, error)
+	CalculateGrowingDegreeDay(tmaxReadings []models.MicroclimateReading, tminReadings []models.MicroclimateReading, baseTemp float32) ([]models.GrowingDegreeDay, error)
 
-	CalculatePredictedGrowingDegreeDay(ctx context.Context, tmaxReadings []models.PredictedMicroclimateReading, tminReadings []models.PredictedMicroclimateReading, baseTemp float32) ([]models.GrowingDegreeDay, error)
+	CalculatePredictedGrowingDegreeDay(tmaxReadings []models.PredictedMicroclimateReading, tminReadings []models.PredictedMicroclimateReading, baseTemp float32) ([]models.GrowingDegreeDay, error)
 
 	ConvertPredictedMicroclimateReadings(predictedMicroclimateReadings []models.PredictedMicroclimateReading) []models.MicroclimateReading
+
+	ValidateMicroclimateReadings(fromDate, toDate time.Time, microclimateReadings []models.MicroclimateReading) bool
+
+	ValidateGrowingDegreeDays(fromDate, toDate time.Time, gdds []models.GrowingDegreeDay) bool
 }

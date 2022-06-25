@@ -14,4 +14,11 @@ func main() {
 
 	f.Close()
 
+	var f2 *os.File
+
+	fmt.Println(f2.Close())
+
+	fmt.Println(os.Remove("zozzle"))
+	fmt.Println(os.Remove(""))
+
 }
