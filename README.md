@@ -26,5 +26,6 @@
 
 - InfluxDB provjerava zapisivanje zadnjih 48h, inače se simulacija odvrti odmah, dodao sam to da testiranjem korištenje time series data, ako se hoće od početka provjeravati staviti range(start 0) u YieldRepository-u unutar flux querya.
 
-- Unutar paketa models apsimx.go
+- Unutar paketa models nalazi se apsimx.go datoteka gdje je funkcija za zapisivanje JSON-a u .apsimx datoteci. U datoteci se nalazi za svaku kulturu hardkodirani string koji predstavlja blueprint njene konfiguracije u .apsimx datoteci za simulaciju prinosa.
+
 - Unutar paketa playground su razne go datoteke unutar kojhi sam testirao funkcionalnosti i učio koncepte Go-a
