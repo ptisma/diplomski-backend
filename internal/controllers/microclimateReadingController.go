@@ -48,7 +48,7 @@ func (c *MicroclimateReadingController) GetMicroclimateReadings(w http.ResponseW
 	//log.Println("locationId:", locationId, "microclimateId:", microclimateId, "fromDate:", fromDate, "toDate:", toDate)
 
 	microclimateReadings, err := c.I.GetMicroclimateReadings(ctx, int(microclimateId), int(locationId), fromDate, toDate)
-	if err != nil || len(microclimateReadings) == 0 {
+	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "Error in fetching: microclimate readings")
 		return
@@ -82,7 +82,7 @@ func (c *MicroclimateReadingController) GetMicroclimateReadings(w http.ResponseW
 		}
 
 		preadings, err := c.I.GetPredictedMicroclimateReadings(ctx, int(microclimateId), int(locationId), newFromDate, toDate)
-		if err != nil || len(preadings) == 0 {
+		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			fmt.Fprintf(w, "Error in fetching: predicted microclimate readings")
 			return
@@ -92,6 +92,8 @@ func (c *MicroclimateReadingController) GetMicroclimateReadings(w http.ResponseW
 		microclimateReadings = append(microclimateReadings, cpreadings...)
 
 	}
+
+	log.Println("microclimateReadings:", microclimateReadings)
 
 	if c.I.ValidateMicroclimateReadings(fromDate, toDate, microclimateReadings) == false {
 		w.WriteHeader(http.StatusInternalServerError)

@@ -138,7 +138,7 @@ func (r *MicroclimateReadingRepository) GetBatchMicroclimateReading(locationID i
 	//
 	//return result
 	var err error
-	batchSize := 200
+	batchSize := 100
 	var (
 		rowsAffected int64
 		batch        int

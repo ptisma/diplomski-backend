@@ -150,11 +150,12 @@ func (c *GrowingDegreeDayController) GetGrowingDegreeDays(w http.ResponseWriter,
 			fmt.Fprintf(w, "Error in calculating: predicted growing degree days")
 			return
 		}
-		log.Println("predictedGdds:", predictedGdds)
+		//log.Println("predictedGdds:", predictedGdds)
 		gdds = append(gdds, predictedGdds...)
 
 	}
 
+	log.Println("gdds:", gdds)
 	if c.MicroclimateReadingService.ValidateGrowingDegreeDays(fromDate, toDate, gdds) == false {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "Error in fetching growing degree days, wrong dates")
@@ -162,6 +163,7 @@ func (c *GrowingDegreeDayController) GetGrowingDegreeDays(w http.ResponseWriter,
 	}
 	w.Header().Set("Content-Type", "application/json")
 	response, _ := json.Marshal(&gdds)
+
 	w.Write(response)
 
 }

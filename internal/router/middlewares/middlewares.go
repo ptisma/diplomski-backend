@@ -15,7 +15,7 @@ func LocationMiddleware(next http.Handler) http.Handler {
 		params := mux.Vars(r)
 		locationId, err := strconv.ParseUint(params["locationId"], 10, 32)
 		if err != nil {
-			w.WriteHeader(http.StatusPreconditionFailed)
+			w.WriteHeader(http.StatusBadRequest)
 			fmt.Fprintf(w, "Error in parsing: locationId is not uint")
 			return
 		}
@@ -31,7 +31,7 @@ func CultureMiddleware(next http.Handler) http.Handler {
 		params := mux.Vars(r)
 		cultureId, err := strconv.ParseUint(params["cultureId"], 10, 32)
 		if err != nil {
-			w.WriteHeader(http.StatusPreconditionFailed)
+			w.WriteHeader(http.StatusBadRequest)
 			fmt.Fprintf(w, "Error in parsing: cultureId is not uint")
 			return
 		}
@@ -47,7 +47,8 @@ func MicroclimateMiddleware(next http.Handler) http.Handler {
 		params := mux.Vars(r)
 		microclimateId, err := strconv.ParseUint(params["microclimateId"], 10, 32)
 		if err != nil {
-			w.WriteHeader(http.StatusPreconditionFailed)
+
+			w.WriteHeader(http.StatusBadRequest)
 			fmt.Fprintf(w, "Error in parsing: microclimateId is not uint")
 			return
 		}
@@ -91,19 +92,19 @@ func DatesMiddleware(next http.Handler) http.Handler {
 		//parse direct into string YYYY-MM-DD
 		fromDate, err := time.Parse("20060102", urlParams.Get("from"))
 		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
+			w.WriteHeader(http.StatusBadRequest)
 			fmt.Fprintf(w, "Error in parsing: fromDate is not in YYYYMMDD format")
 			return
 		}
 		toDate, err := time.Parse("20060102", urlParams.Get("to"))
 		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
+			w.WriteHeader(http.StatusBadRequest)
 			fmt.Fprintf(w, "Error in parsing: toDate is not in YYYYMMDD format")
 			return
 		}
 		difference := toDate.Sub(fromDate)
 		if int(difference.Hours()/24) < 1 {
-			w.WriteHeader(http.StatusInternalServerError)
+			w.WriteHeader(http.StatusBadRequest)
 			fmt.Fprintf(w, "Error in parsing: toDate is lower than fromDate")
 			return
 		}

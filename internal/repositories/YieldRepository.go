@@ -29,11 +29,12 @@ func (r *YieldRepository) GetYields(ctx context.Context, locationId, cultureId i
 	var err error
 
 	//flux query
+	//range defines from where to start
 	//filter based on arguments returns tables with records (every pair of field and value with their tags in each new table)
-	//sort works on each table, get the latest one with first
+	//sort works on each table, then get the latest one with first
 	//use group to flat out to single table
 	fluxQueryStr := fmt.Sprintf(`from(bucket:"%s")
-			|> range(start: 0)
+			|> range(start: -48h)
 			|> filter(fn: (r) => r._measurement == "%s" and r["location_id"] == "%d" and r["culture_id"] == "%d" and r["from"] == "%d" and r["to"] == "%d")
 	       |> sort(columns: ["_time"], desc: true)
 	       |> first()

@@ -22,7 +22,7 @@ type YieldController struct {
 
 func (c *YieldController) GetYield(w http.ResponseWriter, r *http.Request) {
 
-	ctx, _ := context.WithTimeout(r.Context(), 31*time.Second)
+	ctx, _ := context.WithTimeout(r.Context(), 40*time.Second)
 
 	//Retrieving locationId and cultureID from middlewares
 	locationId, _ := r.Context().Value("locationId").(uint64)
@@ -172,7 +172,7 @@ func (c *YieldController) GetYield(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//log.Println("yields:", yields)
+	log.Println("yields:", yields)
 
 	w.Header().Set("Content-Type", "application/json")
 	response, _ := json.Marshal(&yields)

@@ -335,7 +335,7 @@ func (s *MicroclimateReadingService) GenerateCSVFile(locationId int, fromDate, t
 
 	//launch a batch getter in separate goroutine
 	g, ctxx := errgroup.WithContext(ctx)
-	batchCh := make(chan models.MicroclimateReading, 200)
+	batchCh := make(chan models.MicroclimateReading, 100)
 	//endCh := make(chan string, 1)
 	//buff := []models.MicroclimateReading{}
 	//counter := 0
@@ -364,7 +364,7 @@ func (s *MicroclimateReadingService) GenerateCSVFile(locationId int, fromDate, t
 			newFromDate = lastDate.AddDate(0, 0, 1)
 		}
 		g, ctxx := errgroup.WithContext(ctx)
-		batchCh := make(chan models.PredictedMicroclimateReading, 6)
+		batchCh := make(chan models.PredictedMicroclimateReading, 100)
 		//buff := []models.PredictedMicroclimateReading{}
 		//counter := 0
 		//flag := false
